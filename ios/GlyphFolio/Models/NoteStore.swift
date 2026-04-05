@@ -14,7 +14,7 @@ class NoteStore: ObservableObject {
 
     private func makeProvider() -> SyncProvider {
         switch AppSettings.shared.syncMode {
-        case .server: return ServerSyncProvider(serverUrl: AppSettings.shared.serverUrl)
+        case .server: return ServerSyncProvider(serverUrl: AppSettings.shared.serverUrl, authToken: AppSettings.shared.authToken)
         case .local:  return LocalSyncProvider()
         // Uncomment when iCloud entitlement is available (paid Apple Developer account):
         // case .icloud: return ICloudSyncProvider()

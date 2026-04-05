@@ -10,6 +10,9 @@ class AppSettings: ObservableObject {
     @Published var serverUrl: String {
         didSet { UserDefaults.standard.set(serverUrl, forKey: "serverUrl") }
     }
+    @Published var authToken: String {
+        didSet { UserDefaults.standard.set(authToken, forKey: "authToken") }
+    }
 
     enum SyncMode: String, CaseIterable {
         case local  = "local"
@@ -30,5 +33,6 @@ class AppSettings: ObservableObject {
         // If a previous build stored "icloud", fall back to local.
         self.syncMode  = SyncMode(rawValue: rawMode) ?? .local
         self.serverUrl = UserDefaults.standard.string(forKey: "serverUrl") ?? ""
+        self.authToken = UserDefaults.standard.string(forKey: "authToken") ?? ""
     }
 }

@@ -72,7 +72,7 @@ function extractTitle(body: string, id: string): string {
 // ── Tag extraction ────────────────────────────────────────────────────────────
 
 function extractTags(body: string): string[] {
-  const match = body.match(/^\/\/ @tags:\s*(.+)$/m)
+  const match = body.match(/^\/\/ @tags:[ \t]*(.+)$/m)
   if (!match) return []
   return match[1].split(',').map(t => t.trim()).filter(Boolean)
 }
@@ -180,21 +180,12 @@ export function createNote(title?: string): Note {
   }
 
   const noteTitle = title ?? 'Untitled'
-  const dateLabel = date.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
+  const dateLabel = date.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }) +
+    ' · ' + date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })
   const initialBody = [
     `// @tags: `,
-    '#set page(margin: 2cm)',
-    '#set text(font: "New Computer Modern", size: 11pt)',
-    '#set heading(numbering: none)',
-    '',
-    '#grid(columns: (1fr, auto), align: (left, right))[',
-    `  #text(size: 9pt, weight: "bold")[${noteTitle}]`,
-    '][',
-    `  #text(size: 8pt, fill: gray)[${dateLabel}]`,
-    ']',
-    '#v(0.2em)',
-    '#line(length: 100%, stroke: 0.5pt + gray)',
-    '#v(0.6em)',
+    `#text(9pt, fill: gray)[${dateLabel}]`,
+    '#line(length: 100%, stroke: 0.4pt + gray)',
     '',
     `= ${noteTitle}`,
     '',

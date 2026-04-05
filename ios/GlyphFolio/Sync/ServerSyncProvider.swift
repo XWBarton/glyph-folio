@@ -4,9 +4,18 @@ import Foundation
 /// Notes are also stored locally in Documents/GlyphFolio/ as a cache.
 class ServerSyncProvider: SyncProvider {
     private let serverUrl: String
+    private let authToken: String
 
-    init(serverUrl: String) {
+    init(serverUrl: String, authToken: String = "") {
         self.serverUrl = serverUrl.trimmingCharacters(in: .init(charactersIn: "/"))
+        self.authToken = authToken
+    }
+
+    private func authorized(_ request: URLRequest) -> URLRequest {
+        guard !authToken.isEmpty else { return request }
+        var req = request
+        req.setValue("Bearer \(authToken)", forHTTPHeaderField: "Authorization")
+        return req
     }
 
     // ── Local cache directory ────────────────────────────────────────────────
@@ -24,7 +33,7 @@ class ServerSyncProvider: SyncProvider {
         guard let url = URL(string: "\(serverUrl)/api/notes") else {
             throw SyncError.networkError("Invalid server URL")
         }
-        let (data, _) = try await URLSession.shared.data(from: url)
+        let (data, _) = try await URLSession.shared.data(for: authorized(URLRequest(url: url)))
         let metas = try JSONDecoder().decode([NoteMetaDTO].self, from: data)
 
         // Pull notes and sync to local cache
@@ -42,7 +51,7 @@ class ServerSyncProvider: SyncProvider {
 
     func readNote(id: String) async throws -> Note? {
         guard let url = URL(string: "\(serverUrl)/api/notes/\(id)") else { return nil }
-        let (data, response) = try await URLSession.shared.data(from: url)
+        let (data, response) = try await URLSession.shared.data(for: authorized(URLRequest(url: url)))
         guard (response as? HTTPURLResponse)?.statusCode == 200 else { return nil }
 
         let dto = try JSONDecoder().decode(NoteDTO.self, from: data)
@@ -84,7 +93,7 @@ class ServerSyncProvider: SyncProvider {
         request.httpMethod = "PUT"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = try JSONEncoder().encode(["body": note.body])
-        let (_, response) = try await URLSession.shared.data(for: request)
+        let (_, response) = try await URLSession.shared.data(for: authorized(request))
         guard (response as? HTTPURLResponse)?.statusCode == 200 else {
             throw SyncError.networkError("Server returned error on write")
         }
@@ -101,7 +110,7 @@ class ServerSyncProvider: SyncProvider {
         guard let url = URL(string: "\(serverUrl)/api/notes/\(id)") else { return }
         var request = URLRequest(url: url)
         request.httpMethod = "DELETE"
-        _ = try? await URLSession.shared.data(for: request)
+        _ = try? await URLSession.shared.data(for: authorized(request))
     }
 
     // ── PDF compilation ──────────────────────────────────────────────────────
@@ -140,7 +149,7 @@ class ServerSyncProvider: SyncProvider {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = try JSONEncoder().encode(["content": content, "noteId": note.id])
 
-        let (data, _) = try await URLSession.shared.data(for: request)
+        let (data, _) = try await URLSession.shared.data(for: authorized(request))
         struct CompileResponse: Decodable {
             let ok: Bool
             let pdfBase64: String?

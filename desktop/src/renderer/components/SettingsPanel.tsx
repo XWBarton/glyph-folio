@@ -82,8 +82,14 @@ export function SettingsPanel({
     setTestStatus('idle')
     setTestMsg('Testing…')
     const result = await window.api.syncTestServer(serverUrl, authToken || undefined)
-    if (result.ok) { setTestStatus('ok'); setTestMsg('Connected') }
-    else { setTestStatus('fail'); setTestMsg(result.error ?? 'Failed') }
+    if (result.ok) {
+      setTestStatus('ok')
+      setTestMsg('Connected — saved')
+      onSave({ syncMode, serverUrl, authToken, notesDir, fontSize })
+    } else {
+      setTestStatus('fail')
+      setTestMsg(result.error ?? 'Failed')
+    }
   }
 
   return (
@@ -171,7 +177,7 @@ export function SettingsPanel({
                 <GlassInput
                   value={serverUrl}
                   onChange={setServerUrl}
-                  placeholder="http://192.168.86.25:3001"
+                  placeholder="https://folio.example.com or http://192.168.1.x:3001"
                 />
                 <GlassInput
                   value={authToken}

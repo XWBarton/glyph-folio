@@ -6,6 +6,7 @@ struct SettingsView: View {
     @Environment(\.dismiss) private var dismiss
 
     @State private var serverUrl: String = AppSettings.shared.serverUrl
+    @State private var authToken: String = AppSettings.shared.authToken
     @State private var testStatus: TestStatus = .idle
     @State private var testMessage = ""
 
@@ -36,6 +37,14 @@ struct SettingsView: View {
                                 .autocorrectionDisabled()
                                 .keyboardType(.URL)
                                 .onSubmit { settings.serverUrl = serverUrl }
+
+                            Text("Auth Token")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                            SecureField("Optional bearer token", text: $authToken)
+                                .textInputAutocapitalization(.never)
+                                .autocorrectionDisabled()
+                                .onSubmit { settings.authToken = authToken }
 
                             HStack {
                                 Button("Test Connection") {
@@ -77,6 +86,7 @@ struct SettingsView: View {
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button("Done") {
                         settings.serverUrl = serverUrl
+                        settings.authToken = authToken
                         Task { await noteStore.reloadSettings() }
                         dismiss()
                     }
@@ -94,7 +104,9 @@ struct SettingsView: View {
             testStatus = .fail; testMessage = "Invalid URL"; return
         }
         do {
-            let (_, response) = try await URLSession.shared.data(from: url)
+            var req = URLRequest(url: url)
+            if !authToken.isEmpty { req.setValue("Bearer \(authToken)", forHTTPHeaderField: "Authorization") }
+            let (_, response) = try await URLSession.shared.data(for: req)
             if (response as? HTTPURLResponse)?.statusCode == 200 {
                 testStatus = .ok;   testMessage = "Connected"
             } else {

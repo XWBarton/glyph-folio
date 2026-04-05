@@ -10,6 +10,7 @@
 		3090465E077DA3D370A97770 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AE74864535F042821F9FA214 /* ContentView.swift */; };
 		5034CBE1B38C6AFC5B4E6E17 /* AppSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4990AE0A6538A067D5F0E124 /* AppSettings.swift */; };
 		5CFFB17FBF18C10EC0274179 /* ICloudSyncProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0BF29516948B8B7FAE5A9C3 /* ICloudSyncProvider.swift */; };
+		806DA3BE2346CACC28F4FD03 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 45993720034E702358216925 /* Assets.xcassets */; };
 		87DF853B6CB5C228AE683347 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 209BFBBE46223ED103C5D4AE /* SettingsView.swift */; };
 		8DF30CEE22FC336A109D6260 /* PDFPreviewView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 15CE62D287D918F1E4C57198 /* PDFPreviewView.swift */; };
 		A3AFD11ECF4369F3C37393BB /* ServerSyncProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A1CC97532B9658F2F37E752 /* ServerSyncProvider.swift */; };
@@ -29,6 +30,7 @@
 		15CE62D287D918F1E4C57198 /* PDFPreviewView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PDFPreviewView.swift; sourceTree = "<group>"; };
 		209BFBBE46223ED103C5D4AE /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		2A1CC97532B9658F2F37E752 /* ServerSyncProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServerSyncProvider.swift; sourceTree = "<group>"; };
+		45993720034E702358216925 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		4990AE0A6538A067D5F0E124 /* AppSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppSettings.swift; sourceTree = "<group>"; };
 		6EBDEE54FA903B47C413882A /* DesignHelpers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DesignHelpers.swift; sourceTree = "<group>"; };
 		7217447848A292FB1B78A548 /* NoteEditorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NoteEditorView.swift; sourceTree = "<group>"; };
@@ -79,6 +81,7 @@
 		4FA8DDF12D0FD9A0C8DCB7B9 /* GlyphFolio */ = {
 			isa = PBXGroup;
 			children = (
+				45993720034E702358216925 /* Assets.xcassets */,
 				D4199D02241C19C530AF4A66 /* GlyphFolio.entitlements */,
 				884DD12693159F52FE3A52E1 /* GlyphFolioApp.swift */,
 				FD8A8E77243E6241B3A896C6 /* Info.plist */,
@@ -115,6 +118,7 @@
 			buildConfigurationList = AAD7AE8066E5231EBECD1DB4 /* Build configuration list for PBXNativeTarget "GlyphFolio" */;
 			buildPhases = (
 				E4E1939E056B6E97A10BC602 /* Sources */,
+				4F12F9FB4DED3277C5572644 /* Resources */,
 			);
 			buildRules = (
 			);
@@ -159,6 +163,17 @@
 			);
 		};
 /* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		4F12F9FB4DED3277C5572644 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				806DA3BE2346CACC28F4FD03 /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
 		E4E1939E056B6E97A10BC602 /* Sources */ = {

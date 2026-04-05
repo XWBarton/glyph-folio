@@ -3,10 +3,23 @@ import { merge3 } from '../lib/merge3'
 
 export type SyncStatus = 'synced' | 'syncing' | 'offline' | 'idle'
 
+function normalizeUrl(url: string): string {
+  if (!url) return url
+  // Upgrade http:// to https:// for non-local addresses (Cloudflare tunnels require HTTPS)
+  if (url.startsWith('http://')) {
+    const host = url.slice(7).split('/')[0].split(':')[0]
+    const isLocal = host === 'localhost' || host === '127.0.0.1' ||
+      /^192\.168\./.test(host) || /^10\./.test(host) || /^172\.(1[6-9]|2\d|3[01])\./.test(host)
+    if (!isLocal) return 'https://' + url.slice(7)
+  }
+  return url
+}
+
 export function useServerSync(serverUrl: string, enabled: boolean, authToken?: string) {
   const [status, setStatus] = useState<SyncStatus>('idle')
   const queueRef = useRef<Map<string, string>>(new Map())
   const flushingRef = useRef(false)
+  const base = normalizeUrl(serverUrl).replace(/\/$/, '')
 
   const authHeaders = (extra?: Record<string, string>) => ({
     'Content-Type': 'application/json',
@@ -27,7 +40,7 @@ export function useServerSync(serverUrl: string, enabled: boolean, authToken?: s
       queueRef.current.clear()
       try {
         await Promise.all(entries.map(async ([noteId, noteBody]) => {
-          await fetch(`${serverUrl.replace(/\/$/, '')}/api/notes/${encodeURIComponent(noteId)}`, {
+          await fetch(`${base}/api/notes/${encodeURIComponent(noteId)}`, {
             method: 'PUT',
             headers: authHeaders(),
             body: JSON.stringify({ body: noteBody })
@@ -57,7 +70,7 @@ export function useServerSync(serverUrl: string, enabled: boolean, authToken?: s
     }
     try {
       const content = buildTemplate(body, title, date)
-      const res = await fetch(`${serverUrl.replace(/\/$/, '')}/api/compile`, {
+      const res = await fetch(`${base}/api/compile`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ content, noteId: id })
@@ -77,7 +90,6 @@ export function useServerSync(serverUrl: string, enabled: boolean, authToken?: s
 
   const syncAll = useCallback(async (): Promise<'synced' | 'offline'> => {
     if (!enabled || !serverUrl) return 'offline'
-    const base = serverUrl.replace(/\/$/, '')
     const headers = authToken ? { 'Authorization': `Bearer ${authToken}` } : {}
 
     setStatus('syncing')
@@ -184,7 +196,17 @@ export function useServerSync(serverUrl: string, enabled: boolean, authToken?: s
     }
   }, [enabled, serverUrl, authToken])
 
-  return { status, pushNote, compilePdf, syncAll }
+  const deleteNote = useCallback(async (id: string) => {
+    if (!enabled || !serverUrl) return
+    try {
+      await fetch(`${base}/api/notes/${encodeURIComponent(id)}`, {
+        method: 'DELETE',
+        headers: authToken ? { 'Authorization': `Bearer ${authToken}` } : {},
+      })
+    } catch { /* offline — note is already gone locally, that's fine */ }
+  }, [enabled, serverUrl, authToken])
+
+  return { status, pushNote, compilePdf, syncAll, deleteNote }
 }
 
 function buildTemplate(body: string, title: string, date: string): string {

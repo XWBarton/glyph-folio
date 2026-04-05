@@ -18,16 +18,19 @@ export default function App() {
   } = useNotes()
 
   const [settings, setSettings] = useState<AppSettings>({
-    syncMode: 'local', serverUrl: '', notesDir: '', fontSize: 14
+    syncMode: 'local', serverUrl: '', notesDir: '', fontSize: 14,
+    spellAffPath: '', spellDicPath: '', spellLangName: '', authToken: ''
   })
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [searchOpen, setSearchOpen] = useState(false)
   const [lastSaved, setLastSaved] = useState<Date | null>(null)
   const [isDirty, setIsDirty] = useState(false)
 
+  const [settingsLoaded, setSettingsLoaded] = useState(false)
+
   // Load settings on mount — also restore custom spell dict if one was saved
   useEffect(() => {
-    window.api.settingsGet().then(setSettings)
+    window.api.settingsGet().then(s => { setSettings(s); setSettingsLoaded(true) })
     window.api.spellLoadDict().then(result => {
       if (result) {
         import('./lib/spellChecker').then(({ reinitChecker }) => reinitChecker(result.aff, result.dic))
@@ -67,24 +70,24 @@ export default function App() {
   const { pdfBytes, error, isCompiling, compile } = useNoteCompiler(body)
 
   // ── Server sync ───────────────────────────────────────────────────────────────
-  const { status: syncStatus, pushNote, syncAll } = useServerSync(
+  const { status: syncStatus, pushNote, syncAll, deleteNote: deleteNoteOnServer } = useServerSync(
     settings.serverUrl,
     settings.syncMode === 'server',
     settings.authToken
   )
 
-  // Two-way sync on mount and whenever the window regains focus
+  // Two-way sync once settings are loaded, and on window focus
   useEffect(() => {
-    if (settings.syncMode !== 'server') return
+    if (!settingsLoaded || settings.syncMode !== 'server') return
     syncAll().then(result => { if (result === 'synced') refreshNotes() })
-  }, [settings.syncMode, settings.serverUrl])
+  }, [settingsLoaded, settings.syncMode, settings.serverUrl, settings.authToken])
 
   useEffect(() => {
-    if (settings.syncMode !== 'server') return
+    if (!settingsLoaded || settings.syncMode !== 'server') return
     const handler = () => syncAll().then(result => { if (result === 'synced') refreshNotes() })
     window.addEventListener('focus', handler)
     return () => window.removeEventListener('focus', handler)
-  }, [settings.syncMode, settings.serverUrl, syncAll])
+  }, [settingsLoaded, settings.syncMode, settings.serverUrl, syncAll])
 
   // ── Dirty tracking ────────────────────────────────────────────────────────────
   const prevBodyRef = useRef(body)
@@ -126,9 +129,11 @@ export default function App() {
   }, [createNote])
 
   const handleDelete = useCallback(async (filePath: string) => {
+    const noteId = notes.find(n => n.filePath === filePath)?.id
     await deleteNote(filePath)
+    if (noteId && settings.syncMode === 'server') await deleteNoteOnServer(noteId)
     setSearchOpen(true) // reopen explorer so user can pick another note
-  }, [deleteNote])
+  }, [deleteNote, deleteNoteOnServer, notes, settings.syncMode])
 
   // ── Export PDF ────────────────────────────────────────────────────────────────
   const exportPdf = useCallback(async () => {

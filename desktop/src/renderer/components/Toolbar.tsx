@@ -134,28 +134,31 @@ export function Toolbar({
 }
 
 function SyncModePill({ mode, status }: { mode: string; status: string }) {
-  const labels: Record<string, string> = { icloud: 'iCloud', server: 'Server', local: 'Local', idle: '' }
-  const syncLabel = labels[status] ?? labels[mode] ?? mode
+  const modeLabel = mode === 'icloud' ? 'iCloud' : mode === 'server' ? 'Server' : 'Local'
+  const statusLabel: Record<string, string> = { syncing: 'Syncing', synced: 'Synced', offline: 'Offline' }
+  const extra = statusLabel[status]
 
-  const cls = status === 'syncing' ? 'pill-syncing'
-    : status === 'offline' ? 'pill-offline'
-    : status === 'synced'  ? 'pill-synced'
-    : ''
+  const palette =
+    status === 'syncing' ? { bg: 'rgba(217,119,6,0.12)',  border: 'rgba(217,119,6,0.30)',  color: 'var(--yellow)' }
+    : status === 'offline' ? { bg: 'rgba(220,38,38,0.12)',  border: 'rgba(220,38,38,0.30)',  color: 'var(--red)'    }
+    : status === 'synced'  ? { bg: 'rgba(22,163,74,0.10)',  border: 'rgba(22,163,74,0.25)',  color: 'var(--green)'  }
+    :                        { bg: 'rgba(255,255,255,0.45)', border: 'rgba(255,255,255,0.6)', color: 'var(--subtext)'}
 
   return (
     <div style={{
       display: 'flex', alignItems: 'center', gap: 4,
       borderRadius: 20, padding: '3px 9px',
-      border: '1px solid rgba(255,255,255,0.6)',
+      border: `1px solid ${palette.border}`,
       backdropFilter: 'blur(8px)',
-      background: 'rgba(255,255,255,0.45)',
-      fontSize: 10, color: 'var(--subtext)',
+      background: palette.bg,
+      fontSize: 10, color: palette.color,
       userSelect: 'none',
-    }} className={cls}>
+      transition: 'background 0.3s, border-color 0.3s, color 0.3s',
+    }}>
       <span style={{ fontSize: 8 }}>
         {mode === 'icloud' ? '☁' : mode === 'server' ? '⟳' : '◎'}
       </span>
-      <span>{mode === 'icloud' ? 'iCloud' : mode === 'server' ? 'Server' : 'Local'}{syncLabel && syncLabel !== '' && status !== 'idle' ? ` · ${syncLabel}` : ''}</span>
+      <span>{modeLabel}{extra ? ` · ${extra}` : ''}</span>
     </div>
   )
 }
