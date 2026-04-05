@@ -1,9 +1,10 @@
 import { ipcMain, dialog } from 'electron'
+import { getBase, setBase } from './syncBase'
 import { readFileSync, existsSync, readdirSync } from 'fs'
 import { basename, join, dirname } from 'path'
 import { compileNote } from './compiler'
 import {
-  listNotes, readNote, writeNote, deleteNote, createNote, exportNotePdf, resolveNotesDir, searchNotes
+  listNotes, readNote, writeNote, upsertNote, deleteNote, createNote, exportNotePdf, resolveNotesDir, searchNotes
 } from './notesManager'
 import { getStore } from './store'
 import { net } from 'electron'
@@ -20,6 +21,13 @@ export function registerIpcHandlers(): void {
   ipcMain.handle('notes:write', async (_event, filePath: string, body: string) => {
     return writeNote(filePath, body)
   })
+
+  ipcMain.handle('notes:upsert', async (_event, id: string, body: string) => {
+    return upsertNote(id, body)
+  })
+
+  ipcMain.handle('sync:get-base', (_event, noteId: string) => getBase(noteId))
+  ipcMain.handle('sync:set-base', (_event, noteId: string, body: string) => setBase(noteId, body))
 
   ipcMain.handle('notes:delete', async (_event, filePath: string) => {
     return deleteNote(filePath)
@@ -133,10 +141,12 @@ export function registerIpcHandlers(): void {
     }
   })
 
-  ipcMain.handle('sync:test-server', async (_event, url: string) => {
+  ipcMain.handle('sync:test-server', async (_event, url: string, token?: string) => {
     try {
       const healthUrl = url.replace(/\/$/, '') + '/api/health'
-      const response = await net.fetch(healthUrl, { method: 'GET' })
+      const headers: Record<string, string> = {}
+      if (token) headers['Authorization'] = `Bearer ${token}`
+      const response = await net.fetch(healthUrl, { method: 'GET', headers })
       if (response.ok) return { ok: true }
       return { ok: false, error: `Server returned ${response.status}` }
     } catch (e) {

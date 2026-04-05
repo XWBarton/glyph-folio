@@ -67,10 +67,24 @@ export default function App() {
   const { pdfBytes, error, isCompiling, compile } = useNoteCompiler(body)
 
   // ── Server sync ───────────────────────────────────────────────────────────────
-  const { status: syncStatus, pushNote } = useServerSync(
+  const { status: syncStatus, pushNote, syncAll } = useServerSync(
     settings.serverUrl,
-    settings.syncMode === 'server'
+    settings.syncMode === 'server',
+    settings.authToken
   )
+
+  // Two-way sync on mount and whenever the window regains focus
+  useEffect(() => {
+    if (settings.syncMode !== 'server') return
+    syncAll().then(result => { if (result === 'synced') refreshNotes() })
+  }, [settings.syncMode, settings.serverUrl])
+
+  useEffect(() => {
+    if (settings.syncMode !== 'server') return
+    const handler = () => syncAll().then(result => { if (result === 'synced') refreshNotes() })
+    window.addEventListener('focus', handler)
+    return () => window.removeEventListener('focus', handler)
+  }, [settings.syncMode, settings.serverUrl, syncAll])
 
   // ── Dirty tracking ────────────────────────────────────────────────────────────
   const prevBodyRef = useRef(body)

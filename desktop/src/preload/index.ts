@@ -34,12 +34,14 @@ export interface AppSettings {
   spellAffPath: string
   spellDicPath: string
   spellLangName: string
+  authToken: string
 }
 
 export interface FolioAPI {
   notesList(): Promise<NoteMeta[]>
   notesRead(filePath: string): Promise<Note | null>
   notesWrite(filePath: string, body: string): Promise<{ success: boolean; error?: string }>
+  notesUpsert(id: string, body: string): Promise<{ success: boolean; error?: string }>
   notesDelete(filePath: string): Promise<{ success: boolean; error?: string }>
   notesCreate(title?: string): Promise<Note>
   notesExportPdf(pdfBytes: number[], suggestedName: string): Promise<{ success: boolean; error?: string }>
@@ -48,13 +50,15 @@ export interface FolioAPI {
   typstCompileNote(body: string): Promise<{ pdfBytes: number[] } | { error: string }>
   settingsGet(): Promise<AppSettings>
   settingsSet(settings: Partial<AppSettings>): Promise<void>
-  syncTestServer(url: string): Promise<{ ok: boolean; error?: string }>
+  syncTestServer(url: string, token?: string): Promise<{ ok: boolean; error?: string }>
   onNotesChanged(cb: (event: string, filePath: string) => void): () => void
   onMenuNew(cb: () => void): () => void
   onMenuDelete(cb: () => void): () => void
   onMenuExportPdf(cb: () => void): () => void
   onMenuRerender(cb: () => void): () => void
   onFullscreenChange(cb: (isFullscreen: boolean) => void): () => void
+  syncGetBase(noteId: string): Promise<string | null>
+  syncSetBase(noteId: string, body: string): Promise<void>
   spellListInstalled(): Promise<{ id: string; name: string; affPath: string; dicPath: string }[]>
   spellLoadDictFiles(affPath: string, dicPath: string, langName: string): Promise<{ aff: string; dic: string; name: string } | { error: string }>
   spellPickDict(): Promise<{ aff: string; dic: string; name: string; affPath: string; dicPath: string } | { error: string } | null>
@@ -65,6 +69,7 @@ const api: FolioAPI = {
   notesList: () => ipcRenderer.invoke('notes:list'),
   notesRead: (filePath) => ipcRenderer.invoke('notes:read', filePath),
   notesWrite: (filePath, body) => ipcRenderer.invoke('notes:write', filePath, body),
+  notesUpsert: (id, body) => ipcRenderer.invoke('notes:upsert', id, body),
   notesDelete: (filePath) => ipcRenderer.invoke('notes:delete', filePath),
   notesCreate: (title) => ipcRenderer.invoke('notes:create', title),
   notesExportPdf: (pdfBytes, name) => ipcRenderer.invoke('notes:export-pdf', pdfBytes, name),
@@ -73,7 +78,7 @@ const api: FolioAPI = {
   typstCompileNote: (body) => ipcRenderer.invoke('typst:compile-note', body),
   settingsGet: () => ipcRenderer.invoke('settings:get'),
   settingsSet: (settings) => ipcRenderer.invoke('settings:set', settings),
-  syncTestServer: (url) => ipcRenderer.invoke('sync:test-server', url),
+  syncTestServer: (url, token) => ipcRenderer.invoke('sync:test-server', url, token),
 
   onNotesChanged: (cb) => {
     const handler = (_: IpcRendererEvent, event: string, filePath: string) => cb(event, filePath)
@@ -100,6 +105,8 @@ const api: FolioAPI = {
     ipcRenderer.on('menu:rerender', handler)
     return () => ipcRenderer.off('menu:rerender', handler)
   },
+  syncGetBase: (noteId) => ipcRenderer.invoke('sync:get-base', noteId),
+  syncSetBase: (noteId, body) => ipcRenderer.invoke('sync:set-base', noteId, body),
   spellListInstalled: () => ipcRenderer.invoke('spell:list-installed'),
   spellLoadDictFiles: (affPath, dicPath, langName) => ipcRenderer.invoke('spell:load-dict-files', affPath, dicPath, langName),
   spellPickDict: () => ipcRenderer.invoke('spell:pick-dict'),

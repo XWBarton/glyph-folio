@@ -10,6 +10,7 @@ export interface AppSettings {
   spellAffPath: string
   spellDicPath: string
   spellLangName: string
+  authToken: string
 }
 
 const DEFAULTS: AppSettings = {
@@ -20,6 +21,7 @@ const DEFAULTS: AppSettings = {
   spellAffPath: '',
   spellDicPath: '',
   spellLangName: '',
+  authToken: '',
 }
 
 // Simple JSON-based store (no external dependency required)

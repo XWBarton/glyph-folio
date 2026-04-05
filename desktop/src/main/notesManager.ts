@@ -129,6 +129,17 @@ export function readNote(filePath: string): Note | null {
   }
 }
 
+// Write a note by ID (used for sync — creates file if it doesn't exist)
+export function upsertNote(id: string, body: string): { success: boolean; error?: string } {
+  try {
+    const dir = resolveNotesDir()
+    writeFileSync(join(dir, `${id}.typ`), body, 'utf8')
+    return { success: true }
+  } catch (e) {
+    return { success: false, error: String(e) }
+  }
+}
+
 export function writeNote(filePath: string, body: string): { success: boolean; error?: string } {
   try {
     writeFileSync(filePath, body, 'utf8')

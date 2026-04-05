@@ -21,6 +21,7 @@ export function SettingsPanel({
 }: Props) {
   const [syncMode, setSyncMode] = useState(settings.syncMode)
   const [serverUrl, setServerUrl] = useState(settings.serverUrl)
+  const [authToken, setAuthToken] = useState(settings.authToken ?? '')
   const [notesDir, setNotesDir] = useState(settings.notesDir)
   const [fontSize, setFontSize] = useState(settings.fontSize)
   const [testStatus, setTestStatus] = useState<'idle' | 'ok' | 'fail'>('idle')
@@ -32,6 +33,7 @@ export function SettingsPanel({
   useEffect(() => {
     setSyncMode(settings.syncMode)
     setServerUrl(settings.serverUrl)
+    setAuthToken(settings.authToken ?? '')
     setNotesDir(settings.notesDir)
     setFontSize(settings.fontSize)
     setActiveLang(settings.spellLangName || 'English (built-in)')
@@ -72,14 +74,14 @@ export function SettingsPanel({
   }
 
   const handleSave = () => {
-    onSave({ syncMode, serverUrl, notesDir, fontSize })
+    onSave({ syncMode, serverUrl, authToken, notesDir, fontSize })
     onClose()
   }
 
   const testConnection = async () => {
     setTestStatus('idle')
     setTestMsg('Testing…')
-    const result = await window.api.syncTestServer(serverUrl)
+    const result = await window.api.syncTestServer(serverUrl, authToken || undefined)
     if (result.ok) { setTestStatus('ok'); setTestMsg('Connected') }
     else { setTestStatus('fail'); setTestMsg(result.error ?? 'Failed') }
   }
@@ -169,7 +171,13 @@ export function SettingsPanel({
                 <GlassInput
                   value={serverUrl}
                   onChange={setServerUrl}
-                  placeholder="http://192.168.1.10:3001"
+                  placeholder="http://192.168.86.25:3001"
+                />
+                <GlassInput
+                  value={authToken}
+                  onChange={setAuthToken}
+                  placeholder="Auth token (if set)"
+                  password
                 />
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 4 }}>
                   <GlassBtn onClick={testConnection}>Test</GlassBtn>
@@ -380,9 +388,10 @@ function Row({ label, value, children }: { label: string; value?: string; childr
   )
 }
 
-function GlassInput({ value, onChange, placeholder }: { value: string; onChange: (v: string) => void; placeholder?: string }) {
+function GlassInput({ value, onChange, placeholder, password }: { value: string; onChange: (v: string) => void; placeholder?: string; password?: boolean }) {
   return (
     <input
+      type={password ? 'password' : 'text'}
       value={value}
       onChange={e => onChange(e.target.value)}
       placeholder={placeholder}
