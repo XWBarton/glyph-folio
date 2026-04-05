@@ -1,0 +1,65 @@
+{
+  "fill" : {
+    "solid" : "display-p3:0.97647,0.98039,0.98039,1.00000"
+  },
+  "groups" : [
+    {
+      "layers" : [
+
+      ],
+      "shadow" : {
+        "kind" : "neutral",
+        "opacity" : 0.5
+      },
+      "translucency" : {
+        "enabled" : true,
+        "value" : 0.5
+      }
+    },
+    {
+      "layers" : [
+        {
+          "fill" : {
+            "linear-gradient" : [
+              "display-p3:0.29020,0.61961,0.76326,1.00000",
+              "srgb:0.24031,0.76863,0.47843,1.00000"
+            ],
+            "orientation" : {
+              "start" : {
+                "x" : -0.03937543402777774,
+                "y" : -0.07103298611111104
+              },
+              "stop" : {
+                "x" : 0.97365625,
+                "y" : 1.031310763888889
+              }
+            }
+          },
+          "image-name" : "Fraktur_letter_g-cropped.svg",
+          "name" : "Fraktur_letter_g-cropped",
+          "position" : {
+            "scale" : 90,
+            "translation-in-points" : [
+              0,
+              0
+            ]
+          }
+        }
+      ],
+      "shadow" : {
+        "kind" : "neutral",
+        "opacity" : 0.5
+      },
+      "translucency" : {
+        "enabled" : true,
+        "value" : 0.5
+      }
+    }
+  ],
+  "supported-platforms" : {
+    "circles" : [
+      "watchOS"
+    ],
+    "squares" : "shared"
+  }
+}

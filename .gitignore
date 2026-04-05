@@ -1,0 +1,17 @@
+node_modules/
+dist/
+out/
+*.local
+.env
+
+# Server data
+server/data/
+
+# iOS
+ios/GlyphFolio.xcodeproj/project.xcworkspace/
+ios/*.xcworkspace/xcuserdata/
+ios/*.xcodeproj/xcuserdata/
+ios/DerivedData/
+
+# macOS
+.DS_Store

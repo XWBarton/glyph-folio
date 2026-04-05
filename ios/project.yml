@@ -1,0 +1,29 @@
+name: GlyphFolio
+options:
+  bundleIdPrefix: com.glyph
+  deploymentTarget:
+    iOS: "17.0"
+  xcodeVersion: "15"
+
+settings:
+  base:
+    DEVELOPMENT_TEAM: ""  # YOUR TEAM ID HERE (e.g. "A1B2C3D4E5") — find at developer.apple.com → Account → Membership
+    SWIFT_VERSION: "5.9"
+
+targets:
+  GlyphFolio:
+    type: application
+    platform: iOS
+    sources:
+      - GlyphFolio
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.glyph.folio
+        INFOPLIST_FILE: GlyphFolio/Info.plist
+        CODE_SIGN_STYLE: Automatic
+    # No iCloud entitlements — personal developer accounts don't support
+    # ubiquity containers. To enable iCloud sync, enroll in the Apple
+    # Developer Program and add these back:
+    #   com.apple.developer.ubiquity-container-identifiers: [iCloud.com.glyph.folio]
+    #   com.apple.developer.icloud-container-identifiers:   [iCloud.com.glyph.folio]
+    #   com.apple.developer.icloud-services:                [CloudDocuments]

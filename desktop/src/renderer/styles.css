@@ -1,0 +1,183 @@
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+:root {
+  /* Liquid glass palette — same as sibling apps */
+  --text: #1a1d2e;
+  --subtext: #6b7280;
+  --overlay: #9ca3af;
+  --accent: #2563eb;
+  --accent-soft: rgba(37, 99, 235, 0.12);
+  --green: #16a34a;
+  --red: #dc2626;
+  --yellow: #d97706;
+
+  /* Glass panel recipe */
+  --glass: rgba(255, 255, 255, 0.52);
+  --glass-strong: rgba(255, 255, 255, 0.72);
+  --glass-border: rgba(255, 255, 255, 0.85);
+  --glass-border-dim: rgba(255, 255, 255, 0.45);
+  --glass-shadow: 0 8px 32px rgba(0, 40, 120, 0.08), 0 1px 4px rgba(0,0,0,0.04);
+  --glass-inset: inset 0 1px 0 rgba(255, 255, 255, 0.95);
+
+  --toolbar-h: 48px;
+  --radius: 10px;
+  --radius-sm: 7px;
+}
+
+html, body, #root {
+  height: 100%;
+  overflow: hidden;
+  font-family: Georgia, 'Times New Roman', Times, serif;
+  font-size: 13px;
+  color: var(--text);
+  -webkit-font-smoothing: antialiased;
+  background: transparent;
+}
+
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background-color: #f0f4ff;
+  background-image:
+    radial-gradient(ellipse 80% 60% at 20% 10%, rgba(219, 234, 254, 0.95) 0%, transparent 60%),
+    radial-gradient(ellipse 60% 70% at 80% 20%, rgba(237, 233, 254, 0.85) 0%, transparent 55%),
+    radial-gradient(ellipse 70% 50% at 60% 80%, rgba(220, 252, 231, 0.75) 0%, transparent 55%),
+    radial-gradient(ellipse 50% 60% at 10% 80%, rgba(254, 243, 199, 0.65) 0%, transparent 50%);
+  z-index: -1;
+  pointer-events: none;
+}
+
+.glass {
+  background: var(--glass);
+  backdrop-filter: blur(24px) saturate(180%);
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--glass-shadow), var(--glass-inset);
+}
+
+::-webkit-scrollbar { width: 7px; height: 7px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: rgba(0,0,0,0.15);
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(0,0,0,0.25);
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes save-pop {
+  0%   { transform: scale(1); }
+  40%  { transform: scale(1.13); }
+  70%  { transform: scale(0.96); }
+  100% { transform: scale(1); }
+}
+
+@keyframes check-in {
+  0%   { opacity: 0; transform: scale(0.5) translateY(2px); }
+  60%  { opacity: 1; transform: scale(1.1) translateY(0); }
+  100% { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+/* ── Notes list panel ──────────────────────────────────────────────────────── */
+
+.notes-list-panel {
+  width: 240px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  border-radius: var(--radius);
+  background: var(--glass);
+  backdrop-filter: blur(24px) saturate(180%);
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--glass-shadow), var(--glass-inset);
+  overflow: hidden;
+}
+
+.notes-list-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px 8px;
+  flex-shrink: 0;
+  border-bottom: 1px solid rgba(255,255,255,0.5);
+}
+
+.notes-search {
+  width: 100%;
+  background: rgba(255,255,255,0.65);
+  border: 1px solid rgba(255,255,255,0.8);
+  border-radius: var(--radius-sm);
+  padding: 6px 10px;
+  font-size: 12px;
+  color: var(--text);
+  outline: none;
+  font-family: inherit;
+  transition: border-color 0.12s;
+  margin: 0 12px 8px;
+  width: calc(100% - 24px);
+}
+.notes-search:focus {
+  border-color: rgba(37,99,235,0.4);
+}
+.notes-search::placeholder { color: var(--overlay); }
+
+.notes-list-scroll {
+  flex: 1;
+  overflow-y: auto;
+  padding-bottom: 8px;
+}
+
+.notes-group-label {
+  padding: 8px 12px 3px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--overlay);
+  user-select: none;
+}
+
+.note-row {
+  padding: 8px 12px;
+  cursor: pointer;
+  border-bottom: 1px solid rgba(255,255,255,0.35);
+  transition: background 0.1s;
+  border-left: 3px solid transparent;
+}
+.note-row:hover {
+  background: rgba(255,255,255,0.45);
+}
+.note-row.active {
+  background: var(--accent-soft);
+  border-left-color: var(--accent);
+}
+.note-row-title {
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  letter-spacing: -0.01em;
+}
+.note-row-date {
+  font-size: 10.5px;
+  color: var(--overlay);
+  margin-top: 2px;
+  letter-spacing: -0.01em;
+}
+
+/* ── Sync status pills ─────────────────────────────────────────────────────── */
+.pill-synced  { background: rgba(22,163,74,0.10);  border-color: rgba(22,163,74,0.20);  color: var(--green); }
+.pill-syncing { background: rgba(217,119,6,0.10);  border-color: rgba(217,119,6,0.20);  color: var(--yellow); }
+.pill-offline { background: rgba(220,38,38,0.10);  border-color: rgba(220,38,38,0.20);  color: var(--red); }
