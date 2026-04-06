@@ -39,7 +39,7 @@ export const SLASH_COMMANDS: SlashCommand[] = [
   { id: 'tag', label: 'Add tags', description: 'Edit note tags', icon: '#', category: 'advanced', snippet: '', keywords: ['tag', 'tags', 'label'] },
 
   // Checklist
-  { id: 'checklist', label: 'Checklist', description: 'Interactive checkbox list (cheq)', icon: '✓', category: 'structure', snippet: '#import "@preview/cheq:0.3.0": checklist\n#show: checklist.with(fill: luma(95%), stroke: blue, radius: .2em)\n\n- [ ] $1\n- [ ] $2\n- [ ] $0', keywords: ['checklist', 'check', 'todo', 'task', 'checkbox'] },
+  { id: 'checklist', label: 'Checklist', description: 'Interactive checkbox list (auto-imports cheq)', icon: '✓', category: 'structure', snippet: '- [ ] ${1:item}\n- [ ] ${2:item}\n- [ ] $0', keywords: ['checklist', 'check', 'todo', 'task', 'checkbox'] },
 
   // Advanced
   { id: 'set-text', label: 'Set font', description: '#set text(…)', icon: 'Aa', category: 'advanced', snippet: '#set text(font: "${1:New Computer Modern}", size: ${2:11}pt)\n$0', keywords: ['font', 'text', 'set', 'size'] },

@@ -137,12 +137,44 @@ export function NoteEditor({
           ed.revealLine(lineNumber)
         } else {
           // Insert // @tags:  at line 1
-          const firstLine = model.getLineContent(1)
           const insertRange = new monaco.Range(1, 1, 1, 1)
           ed.executeEdits('slash-tag', [{ range: insertRange, text: '// @tags: \n' }])
           ed.setPosition({ lineNumber: 1, column: 11 }) // after "// @tags: "
           ed.revealLine(1)
         }
+        ed.focus()
+      }, 0)
+      return
+    }
+
+    if (cmd.id === 'checklist') {
+      // Delete the /checklist trigger, inject import below // @tags: if needed, insert item at cursor
+      setTimeout(() => {
+        const model = ed.getModel()
+        if (!model) return
+        // Delete the trigger
+        ed.setSelection(new monaco.Selection(sl, sc, el, ec))
+        ed.executeEdits('slash-checklist', [{ range: ed.getSelection()!, text: '' }])
+
+        const edits: { range: monaco.Range; text: string }[] = []
+
+        // Inject import+show block below // @tags: if not already present
+        const content = model.getValue()
+        if (!content.includes('@preview/cheq')) {
+          const lines = content.split('\n')
+          const tagLineIdx = lines.findIndex(l => /^\/\/ @tags:/.test(l))
+          const insertAfterLine = tagLineIdx !== -1 ? tagLineIdx + 1 : 0
+          const importText = '#import "@preview/cheq:0.3.0": checklist\n#show: checklist\n'
+          edits.push({ range: new monaco.Range(insertAfterLine + 1, 1, insertAfterLine + 1, 1), text: importText })
+        }
+
+        if (edits.length > 0) ed.executeEdits('slash-checklist', edits)
+
+        // Insert checkbox item at (now shifted) cursor position
+        const newPos = ed.getPosition()!
+        const ctrl = ed.getContribution('snippetController2') as any
+        if (ctrl?.insert) ctrl.insert('- [ ] ${1:item}\n- [ ] ${2:item}\n- [ ] $0')
+        else ed.executeEdits('slash-checklist', [{ range: new monaco.Range(newPos.lineNumber, newPos.column, newPos.lineNumber, newPos.column), text: '- [ ] item\n- [ ] item\n- [ ] item' }])
         ed.focus()
       }, 0)
       return

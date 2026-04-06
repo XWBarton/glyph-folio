@@ -23,6 +23,38 @@ struct Note: Identifiable, Codable, Equatable {
         return "\(dateStr)-\(slug.isEmpty ? "note" : slug)"
     }
 
+    var tags: [String] { Note.extractTags(from: body) }
+    var links: [String] { Note.extractLinks(from: body) }
+
+    // Parse tag lines — supports:
+    //   // tags: foo, bar
+    //   // @tags: foo, bar
+    //   //tags: foo, bar
+    static func extractTags(from body: String) -> [String] {
+        for line in body.components(separatedBy: "\n") {
+            guard let range = line.range(of: #"//\s*@?tags:\s*"#, options: .regularExpression) else { continue }
+            let tagStr = String(line[range.upperBound...]).trimmingCharacters(in: .whitespaces)
+            let tags = tagStr.components(separatedBy: ",")
+                .map { $0.trimmingCharacters(in: .whitespaces).lowercased() }
+                .filter { !$0.isEmpty }
+            if !tags.isEmpty { return tags }
+        }
+        return []
+    }
+
+    // Parse `[[link target]]` wikilinks
+    static func extractLinks(from body: String) -> [String] {
+        guard let regex = try? NSRegularExpression(pattern: #"\[\[([^\]]+)\]\]"#) else { return [] }
+        let ns = body as NSString
+        return regex.matches(in: body, range: NSRange(location: 0, length: ns.length))
+            .compactMap { match -> String? in
+                guard match.numberOfRanges > 1 else { return nil }
+                let r = match.range(at: 1)
+                guard r.location != NSNotFound else { return nil }
+                return ns.substring(with: r).trimmingCharacters(in: .whitespaces)
+            }
+    }
+
     static func extractTitle(from body: String, id: String) -> String {
         if let match = body.range(of: #"^={1,6}\s+(.+)$"#, options: [.regularExpression, .anchored]) {
             let line = String(body[match])

@@ -1,12 +1,17 @@
 import Foundation
 import Combine
 
+enum SyncStatus {
+    case synced, syncing, offline
+}
+
 @MainActor
 class NoteStore: ObservableObject {
     @Published var notes: [Note] = []
     @Published var activeNote: Note?
     @Published var isLoading = false
     @Published var syncMode: AppSettings.SyncMode = AppSettings.shared.syncMode
+    @Published var syncStatus: SyncStatus = .synced
 
     private var provider: SyncProvider { makeProvider() }
     private var autoSaveTask: Task<Void, Never>?
@@ -27,13 +32,20 @@ class NoteStore: ObservableObject {
         isLoading = true
         do {
             notes = try await provider.listNotes()
+            if syncMode == .server { syncStatus = .synced }
         } catch {
             print("NoteStore.load error:", error)
+            if syncMode == .server { syncStatus = .offline }
         }
         isLoading = false
     }
 
     // ── Select ───────────────────────────────────────────────────────────────
+
+    func deselect() async {
+        await flushPendingSave()
+        activeNote = nil
+    }
 
     func select(_ note: Note) async {
         // Flush any pending save before switching
@@ -50,14 +62,26 @@ class NoteStore: ObservableObject {
     func create(title: String? = nil) async {
         await flushPendingSave()
         let id = Note.makeId(title: title)
-        let heading = title.map { "= \($0)\n\n" } ?? ""
+        let noteTitle = title ?? "New Note"
         let now = Date()
+        let datePart = now.formatted(.dateTime.month(.wide).day().year())
+        let timePart = now.formatted(.dateTime.hour().minute())
+        let dateLabel = "\(datePart) · \(timePart)"
+        let body = [
+            "// @tags: ",
+            "#text(9pt, fill: gray)[\(dateLabel)]",
+            "#line(length: 100%, stroke: 0.4pt + gray)",
+            "",
+            "= \(noteTitle)",
+            "",
+            "",
+        ].joined(separator: "\n")
         guard let dir = provider.notesDirectory() else { return }
         let url = dir.appendingPathComponent("\(id).typ")
         let note = Note(
             id: id,
-            title: title ?? "New Note",
-            body: heading,
+            title: noteTitle,
+            body: body,
             createdAt: now,
             modifiedAt: now,
             filePath: url
@@ -80,6 +104,7 @@ class NoteStore: ObservableObject {
             notes[idx] = note
         }
         pendingBody = body
+        if syncMode == .server { syncStatus = .syncing }
         scheduleSave(note: note)
     }
 
@@ -95,7 +120,12 @@ class NoteStore: ObservableObject {
     private func save(_ note: Note) async {
         guard var n = activeNote, n.id == note.id else { return }
         if let pending = pendingBody { n.body = pending; pendingBody = nil }
-        try? await provider.writeNote(n)
+        do {
+            try await provider.writeNote(n)
+            if syncMode == .server { syncStatus = .synced }
+        } catch {
+            if syncMode == .server { syncStatus = .offline }
+        }
         // Refresh sorted list
         if let idx = notes.firstIndex(where: { $0.id == n.id }) {
             notes[idx] = n
@@ -114,15 +144,14 @@ class NoteStore: ObservableObject {
     // ── Delete ────────────────────────────────────────────────────────────────
 
     func delete(_ note: Note) async {
+        // Optimistic removal — UI updates immediately
+        notes.removeAll { $0.id == note.id }
         if activeNote?.id == note.id {
-            await flushPendingSave()
+            autoSaveTask?.cancel()
+            pendingBody = nil
             activeNote = nil
         }
         try? await provider.deleteNote(id: note.id)
-        notes.removeAll { $0.id == note.id }
-        if activeNote == nil, let first = notes.first {
-            await select(first)
-        }
     }
 
     // ── PDF compilation ───────────────────────────────────────────────────────
@@ -145,7 +174,7 @@ class NoteStore: ObservableObject {
 private class LocalSyncProvider: SyncProvider {
     private var dir: URL {
         let d = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("GlyphFolio")
+            .appendingPathComponent("GlyphFolio/local")
         try? FileManager.default.createDirectory(at: d, withIntermediateDirectories: true)
         return d
     }

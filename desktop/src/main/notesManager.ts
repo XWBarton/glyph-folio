@@ -54,7 +54,9 @@ export function resolveNotesDir(): string {
   const customDir = store.get('notesDir', '') as string
   if (customDir && existsSync(customDir)) return customDir
 
-  const defaultDir = join(app.getPath('documents'), 'GlyphFolio')
+  // Use separate subdirectories so local and server notes never mix
+  const subdir = syncMode === 'server' ? 'server' : 'local'
+  const defaultDir = join(app.getPath('documents'), 'GlyphFolio', subdir)
   mkdirSync(defaultDir, { recursive: true })
   return defaultDir
 }

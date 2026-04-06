@@ -14,6 +14,17 @@ struct NoteDetailView: View {
             .navigationTitle(note.title.isEmpty ? "Note" : note.title)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
+                ToolbarItem(placement: .principal) {
+                    HStack(spacing: 6) {
+                        if noteStore.syncMode == .server {
+                            Circle()
+                                .fill(syncDotColor)
+                                .frame(width: 8, height: 8)
+                        }
+                        Text(note.title.isEmpty ? "Note" : note.title)
+                            .font(.headline)
+                    }
+                }
                 ToolbarItemGroup(placement: .navigationBarTrailing) {
                     if isCompiling {
                         ProgressView()
@@ -33,6 +44,14 @@ struct NoteDetailView: View {
                     ErrorSheetView(message: pdfError)
                 }
             }
+    }
+
+    private var syncDotColor: Color {
+        switch noteStore.syncStatus {
+        case .synced:  return .green
+        case .syncing: return .orange
+        case .offline: return .red
+        }
     }
 
     private func requestPreview() async {

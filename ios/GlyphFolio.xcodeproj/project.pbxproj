@@ -22,6 +22,8 @@
 		E6022740054BDFE09350D09E /* NoteEditorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7217447848A292FB1B78A548 /* NoteEditorView.swift */; };
 		E6E2E0E47416376939C7C580 /* NotesListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E06E5A336051880C330C3875 /* NotesListView.swift */; };
 		F672A2C0D28D3525274F6F0A /* DesignHelpers.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6EBDEE54FA903B47C413882A /* DesignHelpers.swift */; };
+		AA11BB22CC33DD44EE55FF01 /* ExploreView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA11BB22CC33DD44EE55FF02 /* ExploreView.swift */; };
+		AA11BB22CC33DD44EE55FF03 /* GraphView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA11BB22CC33DD44EE55FF04 /* GraphView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -42,6 +44,8 @@
 		C53736585B017DA07B40571C /* SyncProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyncProvider.swift; sourceTree = "<group>"; };
 		D4199D02241C19C530AF4A66 /* GlyphFolio.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = GlyphFolio.entitlements; sourceTree = "<group>"; };
 		E06E5A336051880C330C3875 /* NotesListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotesListView.swift; sourceTree = "<group>"; };
+		AA11BB22CC33DD44EE55FF02 /* ExploreView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExploreView.swift; sourceTree = "<group>"; };
+		AA11BB22CC33DD44EE55FF04 /* GraphView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GraphView.swift; sourceTree = "<group>"; };
 		FD8A8E77243E6241B3A896C6 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -51,6 +55,8 @@
 			children = (
 				AE74864535F042821F9FA214 /* ContentView.swift */,
 				6EBDEE54FA903B47C413882A /* DesignHelpers.swift */,
+				AA11BB22CC33DD44EE55FF02 /* ExploreView.swift */,
+				AA11BB22CC33DD44EE55FF04 /* GraphView.swift */,
 				145D7945A07DD4998F0C5D6F /* NoteDetailView.swift */,
 				7217447848A292FB1B78A548 /* NoteEditorView.swift */,
 				E06E5A336051880C330C3875 /* NotesListView.swift */,
@@ -190,6 +196,8 @@
 				E6022740054BDFE09350D09E /* NoteEditorView.swift in Sources */,
 				A9CC5BDB0E1AEDB547D4CD09 /* NoteStore.swift in Sources */,
 				E6E2E0E47416376939C7C580 /* NotesListView.swift in Sources */,
+				AA11BB22CC33DD44EE55FF01 /* ExploreView.swift in Sources */,
+				AA11BB22CC33DD44EE55FF03 /* GraphView.swift in Sources */,
 				8DF30CEE22FC336A109D6260 /* PDFPreviewView.swift in Sources */,
 				A3AFD11ECF4369F3C37393BB /* ServerSyncProvider.swift in Sources */,
 				87DF853B6CB5C228AE683347 /* SettingsView.swift in Sources */,

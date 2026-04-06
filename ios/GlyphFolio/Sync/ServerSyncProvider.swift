@@ -22,7 +22,7 @@ class ServerSyncProvider: SyncProvider {
 
     func notesDirectory() -> URL? {
         let dir = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("GlyphFolio", isDirectory: true)
+            .appendingPathComponent("GlyphFolio/server", isDirectory: true)
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         return dir
     }
@@ -120,29 +120,9 @@ class ServerSyncProvider: SyncProvider {
             throw SyncError.networkError("Invalid server URL")
         }
 
-        let dateStr = DateFormatter.localizedString(from: note.createdAt, dateStyle: .long, timeStyle: .none)
-        let safeTitle = note.title
-            .replacingOccurrences(of: "\\", with: "\\\\")
-            .replacingOccurrences(of: "[", with: "\\[")
-            .replacingOccurrences(of: "]", with: "\\]")
-
-        let content = """
-        #set page(margin: 2cm)
-        #set text(font: "New Computer Modern", size: 11pt)
-        #set heading(numbering: none)
-
-        #align(center)[
-          #text(size: 18pt, weight: "bold")[\(safeTitle)]
-          #v(0.4em)
-          #text(size: 10pt, fill: gray)[\(dateStr)]
-        ]
-
-        #v(0.8em)
-        #line(length: 100%, stroke: 0.5pt + gray)
-        #v(0.8em)
-
-        \(note.body)
-        """
+        // Strip wikilinks before compilation, matching desktop behaviour
+        let content = note.body.replacingOccurrences(
+            of: #"\[\[([^\]]+)\]\]"#, with: "$1", options: .regularExpression)
 
         var request = URLRequest(url: url)
         request.httpMethod = "POST"

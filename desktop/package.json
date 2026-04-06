@@ -2,6 +2,7 @@
   "name": "glyph-folio-desktop",
   "version": "0.1.0",
   "description": "Quick Typst note-taking with PDF export",
+  "author": "Xavier Barton",
   "main": "out/main/index.js",
   "scripts": {
     "dev": "electron-vite dev",
@@ -24,7 +25,7 @@
     "@types/react": "^18.3.3",
     "@types/react-dom": "^18.3.0",
     "@vitejs/plugin-react": "^4.3.1",
-    "electron": "^31.0.0",
+    "electron": "31.7.7",
     "electron-builder": "^24.13.3",
     "electron-vite": "^2.3.0",
     "typescript": "^5.4.5",

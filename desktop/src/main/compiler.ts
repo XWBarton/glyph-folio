@@ -80,7 +80,18 @@ export async function compileTypst(content: string): Promise<CompileResult> {
       '--root', tmpDir,
       '--diagnostic-format', 'short'
     ]
-    const child = spawn(TYPST_BIN, args)
+    // Ensure Homebrew and Cargo paths are included so package downloads work
+    const env = {
+      ...process.env,
+      HOME: process.env['HOME'] ?? require('os').homedir(),
+      PATH: [
+        process.env['PATH'] ?? '',
+        '/opt/homebrew/bin',
+        '/usr/local/bin',
+        `${process.env['HOME'] ?? require('os').homedir()}/.cargo/bin`,
+      ].join(':'),
+    }
+    const child = spawn(TYPST_BIN, args, { env })
     activeProcess = child
 
     let stderr = ''

@@ -23,43 +23,48 @@ struct SettingsView: View {
                         }
                     }
                     .pickerStyle(.segmented)
-                    .listRowInsets(.init())
-                    .listRowBackground(Color.clear)
+                }
 
-                    switch settings.syncMode {
-                    case .server:
-                        VStack(alignment: .leading, spacing: 10) {
-                            Text("Server URL")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
+                // ── Server settings ───────────────────────────────────────────
+                if settings.syncMode == .server {
+                    Section("Server") {
+                        LabeledContent("URL") {
                             TextField("http://192.168.1.10:3001", text: $serverUrl)
                                 .textInputAutocapitalization(.never)
                                 .autocorrectionDisabled()
                                 .keyboardType(.URL)
+                                .multilineTextAlignment(.trailing)
                                 .onSubmit { settings.serverUrl = serverUrl }
-
-                            Text("Auth Token")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                            SecureField("Optional bearer token", text: $authToken)
+                        }
+                        LabeledContent("Auth Token") {
+                            SecureField("Optional", text: $authToken)
                                 .textInputAutocapitalization(.never)
                                 .autocorrectionDisabled()
+                                .multilineTextAlignment(.trailing)
                                 .onSubmit { settings.authToken = authToken }
-
-                            HStack {
-                                Button("Test Connection") {
-                                    Task { await testConnection() }
+                        }
+                        Button {
+                            Task { await testConnection() }
+                        } label: {
+                            if testStatus == .testing {
+                                HStack {
+                                    ProgressView().scaleEffect(0.8)
+                                    Text("Testing…")
                                 }
-                                .disabled(testStatus == .testing)
-
-                                if testStatus != .idle {
-                                    Label(testMessage, systemImage: testStatus == .ok ? "checkmark.circle.fill" : "xmark.circle.fill")
-                                        .font(.caption)
-                                        .foregroundStyle(testStatus == .ok ? .green : .red)
-                                }
+                            } else if testStatus == .ok {
+                                Label("Connected", systemImage: "checkmark.circle.fill")
+                                    .foregroundStyle(.green)
+                            } else if testStatus == .fail {
+                                Label(testMessage, systemImage: "xmark.circle.fill")
+                                    .foregroundStyle(.red)
+                            } else {
+                                Text("Test Connection")
                             }
                         }
-                    case .local:
+                        .disabled(testStatus == .testing)
+                    }
+                } else {
+                    Section {
                         Label("Notes stored locally on this device only.", systemImage: "iphone")
                             .font(.callout)
                             .foregroundStyle(.secondary)

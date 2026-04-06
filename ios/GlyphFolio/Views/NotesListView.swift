@@ -31,7 +31,7 @@ struct NotesListView: View {
             ForEach(grouped, id: \.label) { group in
                 Section(group.label) {
                     ForEach(group.notes) { note in
-                        NoteRowView(note: note)
+                        NoteRowView(note: note, searchText: searchText)
                             .tag(note.id)
                             .swipeActions(edge: .trailing, allowsFullSwipe: false) {
                                 Button(role: .destructive) {
@@ -45,6 +45,7 @@ struct NotesListView: View {
                 }
             }
         }
+        .refreshable { await noteStore.load() }
         .searchable(text: $searchText, prompt: "Search notes")
         .navigationTitle("Notes")
         .navigationBarTitleDisplayMode(.large)
@@ -79,17 +80,44 @@ struct NotesListView: View {
 
 private struct NoteRowView: View {
     let note: Note
+    var searchText: String = ""
 
     var body: some View {
         VStack(alignment: .leading, spacing: 3) {
             Text(note.title)
                 .font(.system(size: 15, weight: .medium))
                 .lineLimit(1)
-            Text(relativeTime(note.modifiedAt))
-                .font(.system(size: 12))
-                .foregroundStyle(.secondary)
+            if let snippet = bodySnippet {
+                Text(snippet)
+                    .font(.system(size: 12))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+            } else {
+                Text(relativeTime(note.modifiedAt))
+                    .font(.system(size: 12))
+                    .foregroundStyle(.secondary)
+            }
         }
         .padding(.vertical, 2)
+    }
+
+    private var bodySnippet: String? {
+        guard !searchText.isEmpty,
+              !note.title.localizedCaseInsensitiveContains(searchText),
+              let range = note.body.range(of: searchText, options: .caseInsensitive)
+        else { return nil }
+
+        let body = note.body
+        let matchStart = range.lowerBound
+        let matchEnd = range.upperBound
+        let lo = body.index(matchStart, offsetBy: -40, limitedBy: body.startIndex) ?? body.startIndex
+        let hi = body.index(matchEnd,   offsetBy:  60, limitedBy: body.endIndex)   ?? body.endIndex
+        var excerpt = String(body[lo..<hi])
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .replacingOccurrences(of: "\n", with: " ")
+        if lo > body.startIndex { excerpt = "…" + excerpt }
+        if hi < body.endIndex   { excerpt = excerpt + "…" }
+        return excerpt
     }
 }
 
