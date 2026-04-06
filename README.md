@@ -4,20 +4,15 @@
 
 Personal Typst note-taking system. Write notes in Typst markup on your Mac or iPhone, compile to PDF, and keep everything in sync through a self-hosted server — or stay fully offline with local storage.
 
-![Glyph Folio screenshot](screenshot.png)
-
 ## Features
 
 - **Typst editor** — write in Typst markup with syntax highlighting; headings, bold, italic, code, math, and more all coloured as you type
 - **PDF compilation** — compile any note to a PDF via the sync server; preview inline or export
-- **Two-way sync** — desktop and iOS stay in sync through your own server with 3-way merge conflict resolution
-- **Local mode** — work entirely offline; notes are stored on device with no server required
-- **iOS app** — full-featured SwiftUI app with slash commands, wiki-link picker, tag browser, and force-directed graph view
-- **Desktop app** — Electron app for macOS with file watcher, live preview, and slash commands
 - **Tag system** — add `// @tags: tag1, tag2` to any note; browse and filter by tag in the Explore tab
-- **Wiki links** — link notes with `[[Note Title]]`; the graph view visualises connections
 - **Slash commands** — type `/` anywhere to open a command palette with headings, lists, code blocks, math, checkboxes, wiki links, and more
-- **Auth token** — optionally protect your server with a bearer token; set `AUTH_TOKEN` and add it in the app settings
+- **Wiki links** — link notes with `[[Note Title]]`; the graph view visualises connections
+- **Three-way sync** — desktop and iOS stay in sync through your own server with 3-way merge conflict resolution
+- **Local mode** — work entirely offline; notes are stored on device with no server required
 - **Separate stores** — local and server notes are kept in separate directories so switching modes never mixes them
 
 ## Port
@@ -110,8 +105,8 @@ Then restart the server.
 
 | | |
 |---|---|
-| **[Glyph Quorum](https://github.com/XWBarton/glyph-quorum)** | Real-time collaborative Typst editor — multiple people, shared documents, live cursors |
-| **Glyph** | Local desktop editor for macOS — offline, single-user, no server needed |
+| **[Glyph Quorum](https://github.com/XWBarton/glyph-quorum)** | Real-time collaborative browser based Typst editor: multiple people, shared documents, live cursors |
+| **[Glyph](https://github.com/XWBarton/glyph)** | Local desktop typst editor offline, single-user, no server needed. |
 
 ---
 
