@@ -24,6 +24,7 @@
 		F672A2C0D28D3525274F6F0A /* DesignHelpers.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6EBDEE54FA903B47C413882A /* DesignHelpers.swift */; };
 		AA11BB22CC33DD44EE55FF01 /* ExploreView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA11BB22CC33DD44EE55FF02 /* ExploreView.swift */; };
 		AA11BB22CC33DD44EE55FF03 /* GraphView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA11BB22CC33DD44EE55FF04 /* GraphView.swift */; };
+		BB22CC33DD44EE55FF660011 /* ZipArchive.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB22CC33DD44EE55FF660012 /* ZipArchive.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -46,6 +47,7 @@
 		E06E5A336051880C330C3875 /* NotesListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotesListView.swift; sourceTree = "<group>"; };
 		AA11BB22CC33DD44EE55FF02 /* ExploreView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExploreView.swift; sourceTree = "<group>"; };
 		AA11BB22CC33DD44EE55FF04 /* GraphView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GraphView.swift; sourceTree = "<group>"; };
+		BB22CC33DD44EE55FF660012 /* ZipArchive.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ZipArchive.swift; sourceTree = "<group>"; };
 		FD8A8E77243E6241B3A896C6 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -104,6 +106,7 @@
 				4990AE0A6538A067D5F0E124 /* AppSettings.swift */,
 				12A9B8C2D7D6B4435A1E03B0 /* Note.swift */,
 				8040FABB4F612CD0C857825C /* NoteStore.swift */,
+				BB22CC33DD44EE55FF660012 /* ZipArchive.swift */,
 			);
 			path = Models;
 			sourceTree = "<group>";
@@ -195,6 +198,7 @@
 				C3F6CEE5BD57C8EF4CB94502 /* NoteDetailView.swift in Sources */,
 				E6022740054BDFE09350D09E /* NoteEditorView.swift in Sources */,
 				A9CC5BDB0E1AEDB547D4CD09 /* NoteStore.swift in Sources */,
+				BB22CC33DD44EE55FF660011 /* ZipArchive.swift in Sources */,
 				E6E2E0E47416376939C7C580 /* NotesListView.swift in Sources */,
 				AA11BB22CC33DD44EE55FF01 /* ExploreView.swift in Sources */,
 				AA11BB22CC33DD44EE55FF03 /* GraphView.swift in Sources */,
