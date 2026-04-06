@@ -111,6 +111,7 @@ Then restart the server.
 | | |
 |---|---|
 | **[Glyph Quorum](https://github.com/XWBarton/glyph-quorum)** | Real-time collaborative Typst editor — multiple people, shared documents, live cursors |
+| **Glyph** | Local desktop editor for macOS — offline, single-user, no server needed |
 
 ---
 
