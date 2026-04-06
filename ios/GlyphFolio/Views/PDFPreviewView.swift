@@ -27,7 +27,7 @@ struct PDFPreviewView: View {
                     }
                 }
                 .sheet(item: $shareItem) { item in
-                    ShareSheet(items: [item.url])
+                    ShareSheet(url: item.url)
                 }
         }
     }
@@ -67,14 +67,6 @@ private struct ShareItem: Identifiable {
         try? data.write(to: tmp)
         return tmp
     }
-}
-
-private struct ShareSheet: UIViewControllerRepresentable {
-    let items: [Any]
-    func makeUIViewController(context: Context) -> UIActivityViewController {
-        UIActivityViewController(activityItems: items, applicationActivities: nil)
-    }
-    func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
 }
 
 // ── Error sheet ───────────────────────────────────────────────────────────────
