@@ -2,7 +2,7 @@ import Foundation
 
 /// Syncs with the Glyph Folio sync server via REST.
 /// Notes are also stored locally in Documents/GlyphFolio/ as a cache.
-class ServerSyncProvider: SyncProvider {
+actor ServerSyncProvider: SyncProvider {
     private let serverUrl: String
     private let authToken: String
 
@@ -11,16 +11,19 @@ class ServerSyncProvider: SyncProvider {
         self.authToken = authToken
     }
 
-    private func authorized(_ request: URLRequest) -> URLRequest {
-        guard !authToken.isEmpty else { return request }
+    // `let` constants are accessible from nonisolated context
+    nonisolated private func authorized(_ request: URLRequest, timeout: TimeInterval = 8) -> URLRequest {
         var req = request
-        req.setValue("Bearer \(authToken)", forHTTPHeaderField: "Authorization")
+        req.timeoutInterval = timeout
+        if !authToken.isEmpty {
+            req.setValue("Bearer \(authToken)", forHTTPHeaderField: "Authorization")
+        }
         return req
     }
 
     // ── Local cache directory ────────────────────────────────────────────────
 
-    func notesDirectory() -> URL? {
+    nonisolated func notesDirectory() -> URL? {
         let dir = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("GlyphFolio/server", isDirectory: true)
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
@@ -108,6 +111,50 @@ class ServerSyncProvider: SyncProvider {
         }
 
         guard let url = URL(string: "\(serverUrl)/api/notes/\(id)") else { return }
+        var request = URLRequest(url: url)
+        request.httpMethod = "DELETE"
+        _ = try? await URLSession.shared.data(for: authorized(request))
+    }
+
+    // ── Attachments ─────────────────────────────────────────────────────────
+
+    func listAttachments(noteId: String) async throws -> [String] {
+        guard let url = URL(string: "\(serverUrl)/api/notes/\(noteId)/attachments") else { return [] }
+        let (data, _) = try await URLSession.shared.data(for: authorized(URLRequest(url: url)))
+        struct Item: Decodable { let filename: String }
+        let items = try JSONDecoder().decode([Item].self, from: data)
+        return items.map(\.filename)
+    }
+
+    /// Upload image data, returns the sanitised filename the server stored it under.
+    func uploadAttachment(noteId: String, filename: String, data: Data) async throws -> String {
+        guard let url = URL(string: "\(serverUrl)/api/notes/\(noteId)/attachments") else {
+            throw SyncError.networkError("Invalid server URL")
+        }
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        let body: [String: String] = ["filename": filename, "dataBase64": data.base64EncodedString()]
+        request.httpBody = try JSONEncoder().encode(body)
+        let (respData, _) = try await URLSession.shared.data(for: authorized(request, timeout: 30))
+        struct UploadResponse: Decodable { let ok: Bool; let filename: String? }
+        let resp = try JSONDecoder().decode(UploadResponse.self, from: respData)
+        return resp.filename ?? filename
+    }
+
+    func downloadAttachment(noteId: String, filename: String) async throws -> Data {
+        guard let url = URL(string: "\(serverUrl)/api/notes/\(noteId)/attachments/\(filename)") else {
+            throw SyncError.networkError("Invalid URL")
+        }
+        let (data, response) = try await URLSession.shared.data(for: authorized(URLRequest(url: url), timeout: 30))
+        guard (response as? HTTPURLResponse)?.statusCode == 200 else {
+            throw SyncError.networkError("Attachment not found: \(filename)")
+        }
+        return data
+    }
+
+    func deleteAttachment(noteId: String, filename: String) async throws {
+        guard let url = URL(string: "\(serverUrl)/api/notes/\(noteId)/attachments/\(filename)") else { return }
         var request = URLRequest(url: url)
         request.httpMethod = "DELETE"
         _ = try? await URLSession.shared.data(for: authorized(request))

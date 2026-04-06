@@ -1,5 +1,6 @@
 import SwiftUI
 import UIKit
+import PhotosUI
 
 // ── Syntax highlighting ───────────────────────────────────────────────────────
 
@@ -117,6 +118,61 @@ class EditorController: ObservableObject {
         tv.replace(range, withText: "[[\(title)]]")
     }
 
+    /// Navigates to the // @tags: line (or inserts one at the top if absent).
+    /// If tags already exist, appends ", " so the user can type another tag.
+    func insertOrFocusTags(replacingSlash: Bool = false) {
+        guard let tv = textView else { return }
+
+        // Remove the triggering / if called from slash palette
+        if replacingSlash,
+           let sel = tv.selectedTextRange,
+           let prev = tv.position(from: sel.start, offset: -1),
+           let prevRange = tv.textRange(from: prev, to: sel.start),
+           tv.text(in: prevRange) == "/" {
+            tv.replace(prevRange, withText: "")
+        }
+
+        let ns = NSMutableString(string: tv.text ?? "")
+        let marker = "// @tags:"
+        let markerRange = ns.range(of: marker)
+        var cursorPos: Int
+
+        if markerRange.location != NSNotFound {
+            let contentStart = markerRange.location + markerRange.length
+            let searchFrom = NSRange(location: contentStart, length: ns.length - contentStart)
+            let nlRange = ns.range(of: "\n", options: [], range: searchFrom)
+            let lineEnd = nlRange.location != NSNotFound ? nlRange.location : ns.length
+            let content = ns.substring(with: NSRange(location: contentStart, length: lineEnd - contentStart))
+            let trimmed = content.trimmingCharacters(in: .whitespaces)
+
+            if trimmed.isEmpty {
+                // No tags yet — ensure a space is present and park cursor after it
+                if !content.hasPrefix(" ") { ns.insert(" ", at: contentStart) }
+                cursorPos = contentStart + 1
+            } else {
+                // Existing tags — append ", " so the user types the next tag
+                ns.insert(", ", at: lineEnd)
+                cursorPos = lineEnd + 2
+            }
+
+            tv.text = ns as String
+            let safe = min(cursorPos, ns.length)
+            tv.selectedRange = NSRange(location: safe, length: 0)
+            // Scroll tags line into view
+            tv.scrollRangeToVisible(NSRange(location: markerRange.location, length: 0))
+        } else {
+            // No tags line — insert one at the very top
+            let header = "// @tags: \n"
+            ns.insert(header, at: 0)
+            tv.text = ns as String
+            cursorPos = 10 // right after "// @tags: "
+            tv.selectedRange = NSRange(location: cursorPos, length: 0)
+            tv.scrollRangeToVisible(NSRange(location: 0, length: 1))
+        }
+
+        tv.delegate?.textViewDidChange?(tv)
+    }
+
     /// Inserts "- [ ] " at the cursor and, if not already present, injects the
     /// cheq import block immediately after the // @tags: line.
     func insertChecklistItem(replacingSlash: Bool = false) {
@@ -175,6 +231,7 @@ struct TypstEditor: UIViewRepresentable {
     var onSlashTyped: () -> Void = {}
     var onWikiLinkTyped: () -> Void = {}
     var onShowPalette: () -> Void = {}
+    var onInsertImage: () -> Void = {}
 
     func makeCoordinator() -> Coordinator { Coordinator(self) }
 
@@ -194,7 +251,7 @@ struct TypstEditor: UIViewRepresentable {
 
         // Attach the format toolbar as the keyboard's input accessory —
         // it slides up with the keyboard and takes no space when keyboard is hidden.
-        let toolbar = FormatToolbar(controller: controller, onShowPalette: onShowPalette)
+        let toolbar = FormatToolbar(controller: controller, onShowPalette: onShowPalette, onInsertImage: onInsertImage)
         let host = UIHostingController(rootView: toolbar)
         host.view.frame = CGRect(x: 0, y: 0, width: 0, height: 52)
         host.view.backgroundColor = .clear
@@ -214,7 +271,7 @@ struct TypstEditor: UIViewRepresentable {
             tv.selectedRange = NSRange(location: clamped, length: 0)
         }
         // Keep toolbar callbacks up to date
-        context.coordinator.toolbarHost?.rootView = FormatToolbar(controller: controller, onShowPalette: onShowPalette)
+        context.coordinator.toolbarHost?.rootView = FormatToolbar(controller: controller, onShowPalette: onShowPalette, onInsertImage: onInsertImage)
         context.coordinator.parent = self
     }
 
@@ -225,6 +282,49 @@ struct TypstEditor: UIViewRepresentable {
         private var isHighlighting = false
 
         init(_ parent: TypstEditor) { self.parent = parent }
+
+        // Continue list/checkbox prefixes on return; double-return (empty item) exits.
+        func textView(_ tv: UITextView, shouldChangeTextIn range: NSRange, replacementText text: String) -> Bool {
+            guard text == "\n" else { return true }
+            let ns = tv.text as NSString
+            let cursor = range.location
+
+            // Walk back to find the start of the current line
+            var lineStart = cursor
+            while lineStart > 0 && ns.character(at: lineStart - 1) != ("\n" as NSString).character(at: 0) {
+                lineStart -= 1
+            }
+            let currentLine = ns.substring(with: NSRange(location: lineStart, length: cursor - lineStart))
+
+            // (detect prefix, what to insert for the next item)
+            let continuations: [(String, String)] = [
+                ("- [ ] ", "- [ ] "),
+                ("- [x] ", "- [ ] "),
+                ("- ",     "- "),
+                ("+ ",     "+ "),
+            ]
+            for (detect, insert) in continuations {
+                guard currentLine.hasPrefix(detect) else { continue }
+                let afterPrefix = String(currentLine.dropFirst(detect.count))
+                let mns = NSMutableString(string: tv.text)
+                if afterPrefix.trimmingCharacters(in: .whitespaces).isEmpty {
+                    // Empty item — exit list mode: remove the prefix, just break the line
+                    mns.replaceCharacters(in: NSRange(location: lineStart, length: cursor - lineStart), with: "")
+                    tv.text = mns as String
+                    tv.selectedRange = NSRange(location: lineStart, length: 0)
+                } else {
+                    // Non-empty item — continue the list
+                    let insertion = "\n\(insert)"
+                    mns.insert(insertion, at: cursor)
+                    tv.text = mns as String
+                    let newPos = min(cursor + (insertion as NSString).length, mns.length)
+                    tv.selectedRange = NSRange(location: newPos, length: 0)
+                }
+                tv.delegate?.textViewDidChange?(tv)
+                return false
+            }
+            return true
+        }
 
         func textViewDidChange(_ tv: UITextView) {
             guard !isHighlighting else { return }
@@ -366,11 +466,49 @@ struct SlashCommandPalette: View {
 struct FormatToolbar: View {
     let controller: EditorController
     let onShowPalette: () -> Void
+    var onInsertImage: () -> Void = {}
 
     private let quickChars = ["=", "*", "_", "-", "+", "["]
 
     var body: some View {
         HStack(spacing: 0) {
+            // Keyboard dismiss
+            Button {
+                UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder),
+                                                to: nil, from: nil, for: nil)
+            } label: {
+                Image(systemName: "keyboard.chevron.compact.down")
+                    .font(.system(size: 15))
+                    .frame(width: 36, height: 36)
+                    .background(.ultraThinMaterial)
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
+            }
+            .foregroundStyle(.secondary)
+            .padding(.leading, 12)
+            .padding(.trailing, 6)
+            .fixedSize()
+
+            Rectangle()
+                .fill(Color.secondary.opacity(0.25))
+                .frame(width: 1, height: 22)
+
+            // Image picker button
+            Button(action: onInsertImage) {
+                Image(systemName: "photo")
+                    .font(.system(size: 15))
+                    .frame(width: 36, height: 36)
+                    .background(.ultraThinMaterial)
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
+            }
+            .foregroundStyle(.secondary)
+            .padding(.leading, 8)
+            .padding(.trailing, 4)
+            .fixedSize()
+
+            Rectangle()
+                .fill(Color.secondary.opacity(0.25))
+                .frame(width: 1, height: 22)
+
             // Pinned Commands button
             Button(action: onShowPalette) {
                 HStack(spacing: 5) {
@@ -470,6 +608,9 @@ struct NoteEditorView: View {
     @StateObject private var controller = EditorController()
     @State private var showCommandPalette = false
     @State private var showWikiLinkPicker = false
+    @State private var showImagePicker = false
+    @State private var pickerItem: PhotosPickerItem? = nil
+    @State private var isUploadingImage = false
 
     var body: some View {
         TypstEditor(
@@ -477,7 +618,8 @@ struct NoteEditorView: View {
             controller: controller,
             onSlashTyped: { showCommandPalette = true },
             onWikiLinkTyped: { showWikiLinkPicker = true },
-            onShowPalette: { showCommandPalette = true }
+            onShowPalette: { showCommandPalette = true },
+            onInsertImage: { showImagePicker = true }
         )
         .onChange(of: localBody) { _, newValue in noteStore.updateBody(newValue) }
         .background(backgroundGradient)
@@ -485,6 +627,8 @@ struct NoteEditorView: View {
             SlashCommandPalette(isPresented: $showCommandPalette) { cmd in
                 if cmd.id == "checkbox" {
                     controller.insertChecklistItem(replacingSlash: true)
+                } else if cmd.id == "tags" {
+                    controller.insertOrFocusTags(replacingSlash: true)
                 } else {
                     controller.insert(cmd.syntax,
                                       wrapPrefix: cmd.wrapPrefix,
@@ -499,7 +643,39 @@ struct NoteEditorView: View {
                 controller.insertWikiLink(title: picked.title)
             }
         }
+        .photosPicker(isPresented: $showImagePicker, selection: $pickerItem, matching: .images)
+        .onChange(of: pickerItem) { _, item in
+            guard let item else { return }
+            Task { await handlePickedPhoto(item) }
+        }
         .onAppear { localBody = note.body }
         .onChange(of: note.id) { _, _ in localBody = note.body }
+    }
+
+    private func handlePickedPhoto(_ item: PhotosPickerItem) async {
+        guard noteStore.syncMode == .server else {
+            controller.insert("\n// Image attachments require Server mode.\n")
+            return
+        }
+        isUploadingImage = true
+        defer { isUploadingImage = false; pickerItem = nil }
+        do {
+            guard let data = try await item.loadTransferable(type: Data.self) else { return }
+            // Compress to JPEG for consistent cross-platform rendering
+            let imageData: Data
+            let filename: String
+            if let uiImage = UIImage(data: data), let jpeg = uiImage.jpegData(compressionQuality: 0.82) {
+                imageData = jpeg
+                filename = "\(UUID().uuidString).jpg"
+            } else {
+                imageData = data
+                filename = "\(UUID().uuidString).png"
+            }
+            let storedName = try await noteStore.uploadAttachment(noteId: note.id, filename: filename, data: imageData)
+            let snippet = "\n#figure(\n  image(\"attachments/\(note.id)/\(storedName)\"),\n  caption: [],\n)\n"
+            controller.insert(snippet)
+        } catch {
+            print("NoteEditorView: image upload failed:", error)
+        }
     }
 }

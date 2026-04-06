@@ -8,7 +8,9 @@ struct Note: Identifiable, Codable, Equatable {
     var modifiedAt: Date
     var filePath: URL
 
-    static func == (lhs: Note, rhs: Note) -> Bool { lhs.id == rhs.id }
+    static func == (lhs: Note, rhs: Note) -> Bool {
+        lhs.id == rhs.id && lhs.title == rhs.title && lhs.modifiedAt == rhs.modifiedAt
+    }
 
     static func makeId(title: String?) -> String {
         let dateStr = ISO8601DateFormatter().string(from: Date()).prefix(10)

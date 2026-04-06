@@ -8,6 +8,12 @@ protocol SyncProvider {
     func deleteNote(id: String) async throws
     /// Returns PDF data. Throws SyncError.pdfNotAvailable if unsupported.
     func compilePDF(note: Note) async throws -> Data
+
+    // ── Attachments ───────────────────────────────────────────────────────────
+    func listAttachments(noteId: String) async throws -> [String]
+    func uploadAttachment(noteId: String, filename: String, data: Data) async throws -> String
+    func downloadAttachment(noteId: String, filename: String) async throws -> Data
+    func deleteAttachment(noteId: String, filename: String) async throws
 }
 
 enum SyncError: LocalizedError {

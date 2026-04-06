@@ -1,6 +1,10 @@
 import SwiftUI
 import Combine
 
+// ── Lens ─────────────────────────────────────────────────────────────────────
+
+enum GraphLens { case links, tags }
+
 // ── Simulation ────────────────────────────────────────────────────────────────
 
 @MainActor
@@ -19,7 +23,7 @@ final class GraphSimulation: ObservableObject {
 
     private var cancellable: AnyCancellable?
 
-    func reset(notes: [Note], size: CGSize) {
+    func reset(notes: [Note], lens: GraphLens, size: CGSize) {
         let n = notes.count
         guard n > 0 else { nodes = []; edges = []; return }
 
@@ -32,21 +36,32 @@ final class GraphSimulation: ObservableObject {
                         x: cx + r * cos(angle), y: cy + r * sin(angle))
         }
 
-        // Build edge list from [[wikilinks]]
         var seen = Set<String>()
         var result: [(String, String)] = []
-        for note in notes {
-            for link in note.links {
-                let linkLower = link.lowercased()
-                guard let target = notes.first(where: { n in
-                    n.title.lowercased() == linkLower || n.id == link
-                }) else { continue }
-                let key = ([note.id, target.id].sorted()).joined(separator: "|")
-                if seen.insert(key).inserted {
-                    result.append((note.id, target.id))
+
+        switch lens {
+        case .links:
+            for note in notes {
+                for link in note.links {
+                    let linkLower = link.lowercased()
+                    guard let target = notes.first(where: { n in
+                        n.title.lowercased() == linkLower || n.id == link
+                    }) else { continue }
+                    let key = ([note.id, target.id].sorted()).joined(separator: "|")
+                    if seen.insert(key).inserted { result.append((note.id, target.id)) }
+                }
+            }
+        case .tags:
+            for i in notes.indices {
+                for j in (i + 1) ..< notes.count {
+                    let shared = Set(notes[i].tags).intersection(notes[j].tags)
+                    guard !shared.isEmpty else { continue }
+                    let key = ([notes[i].id, notes[j].id].sorted()).joined(separator: "|")
+                    if seen.insert(key).inserted { result.append((notes[i].id, notes[j].id)) }
                 }
             }
         }
+
         edges = result
     }
 
@@ -118,8 +133,10 @@ final class GraphSimulation: ObservableObject {
 
 struct GraphView: View {
     let notes: [Note]
+    var lens: GraphLens = .links
     let onSelect: (Note) -> Void
 
+    @ObservedObject private var settings = AppSettings.shared
     @StateObject private var sim = GraphSimulation()
     @State private var size: CGSize = .zero
 
@@ -148,9 +165,15 @@ struct GraphView: View {
 
                     // Nodes
                     for node in sim.nodes {
+                        let noteForNode = notes.first(where: { $0.id == node.id })
+                        let nodeColor: Color = {
+                            guard let tag = noteForNode?.tags.first else { return .glyphAccent }
+                            if let hex = settings.tagColors[tag] { return Color(hex: hex) }
+                            return tagHashColor(tag)
+                        }()
                         let circle = CGRect(x: node.x - 7, y: node.y - 7, width: 14, height: 14)
-                        ctx.fill(Circle().path(in: circle), with: .color(.accentColor))
-                        ctx.stroke(Circle().path(in: circle), with: .color(.white.opacity(0.8)), lineWidth: 1.5)
+                        ctx.fill(Circle().path(in: circle), with: .color(nodeColor.opacity(0.18)))
+                        ctx.stroke(Circle().path(in: circle), with: .color(nodeColor), lineWidth: 1.5)
                         let truncated = node.title.count > 18
                             ? String(node.title.prefix(16)) + "…"
                             : node.title
@@ -232,13 +255,18 @@ struct GraphView: View {
             }
             .onAppear {
                 size = geo.size
-                sim.reset(notes: notes, size: size)
+                sim.reset(notes: notes, lens: lens, size: size)
                 sim.start(size: size)
             }
             .onDisappear { sim.stop() }
             .onChange(of: notes.map { $0.id }) { _, _ in
                 sim.stop()
-                sim.reset(notes: notes, size: size)
+                sim.reset(notes: notes, lens: lens, size: size)
+                sim.start(size: size)
+            }
+            .onChange(of: lens) { _, newLens in
+                sim.stop()
+                sim.reset(notes: notes, lens: newLens, size: size)
                 sim.start(size: size)
             }
         }

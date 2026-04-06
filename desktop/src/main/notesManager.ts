@@ -1,7 +1,7 @@
 import { app, dialog } from 'electron'
 import {
   readdirSync, readFileSync, writeFileSync, unlinkSync,
-  existsSync, mkdirSync, statSync
+  existsSync, mkdirSync, statSync, rmSync, copyFileSync
 } from 'fs'
 import { join, basename, extname } from 'path'
 import chokidar, { FSWatcher } from 'chokidar'
@@ -90,7 +90,7 @@ function extractLinks(body: string): string[] {
 
 export function listNotes(): NoteMeta[] {
   const dir = resolveNotesDir()
-  const files = readdirSync(dir).filter(f => extname(f) === '.typ')
+  const files = readdirSync(dir).filter(f => extname(f) === '.typ' && !f.startsWith('.'))
   return files.map(f => {
     const filePath = join(dir, f)
     const id = basename(f, '.typ')
@@ -207,11 +207,74 @@ export function createNote(title?: string): Note {
   }
 }
 
+// ── Attachments ──────────────────────────────────────────────────────────────
+
+export function resolveAttachmentsDir(noteId: string): string {
+  const dir = join(resolveNotesDir(), 'attachments', noteId)
+  mkdirSync(dir, { recursive: true })
+  return dir
+}
+
+export function listAttachments(noteId: string): string[] {
+  const dir = join(resolveNotesDir(), 'attachments', noteId)
+  if (!existsSync(dir)) return []
+  return readdirSync(dir).filter(f => !f.startsWith('.'))
+}
+
+export function readAttachmentBuffer(noteId: string, filename: string): Buffer | null {
+  const p = join(resolveNotesDir(), 'attachments', noteId, filename)
+  if (!existsSync(p)) return null
+  try { return readFileSync(p) } catch { return null }
+}
+
+export function writeAttachmentBuffer(noteId: string, filename: string, buffer: Buffer): void {
+  const dir = resolveAttachmentsDir(noteId)
+  writeFileSync(join(dir, filename), buffer)
+}
+
+export function deleteAttachmentFile(noteId: string, filename: string): void {
+  const p = join(resolveNotesDir(), 'attachments', noteId, filename)
+  if (existsSync(p)) unlinkSync(p)
+}
+
+export function deleteNoteAttachments(noteId: string): void {
+  const dir = join(resolveNotesDir(), 'attachments', noteId)
+  if (existsSync(dir)) try { rmSync(dir, { recursive: true }) } catch {}
+}
+
+/** Open a file-picker dialog and copy the chosen image into the note's attachments dir. */
+export async function pickAndSaveAttachment(
+  noteId: string
+): Promise<{ filename: string } | null> {
+  const result = await dialog.showOpenDialog({
+    title: 'Choose image',
+    filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg'] }],
+    properties: ['openFile'],
+  })
+  if (result.canceled || !result.filePaths[0]) return null
+  const src = result.filePaths[0]
+  const filename = basename(src)
+  const dir = resolveAttachmentsDir(noteId)
+  copyFileSync(src, join(dir, filename))
+  return { filename }
+}
+
+/** Copy a file by path into the note's attachments dir (used for drag-and-drop). */
+export function saveFileAsAttachment(
+  noteId: string,
+  srcPath: string
+): { filename: string } {
+  const filename = basename(srcPath)
+  const dir = resolveAttachmentsDir(noteId)
+  copyFileSync(srcPath, join(dir, filename))
+  return { filename }
+}
+
 export function searchNotes(query: string): SearchResult[] {
   const q = query.toLowerCase().trim()
   if (!q) return []
   const dir = resolveNotesDir()
-  const files = readdirSync(dir).filter(f => extname(f) === '.typ')
+  const files = readdirSync(dir).filter(f => extname(f) === '.typ' && !f.startsWith('.'))
   const results: SearchResult[] = []
 
   for (const f of files) {
@@ -278,7 +341,7 @@ export function startWatcher(
   onChange: (event: 'add' | 'change' | 'unlink', filePath: string) => void
 ): void {
   const dir = resolveNotesDir()
-  watcher = chokidar.watch(join(dir, '*.typ'), {
+  watcher = chokidar.watch(join(dir, '[!.]*.typ'), {
     ignoreInitial: true,
     awaitWriteFinish: { stabilityThreshold: 200, pollInterval: 50 }
   })

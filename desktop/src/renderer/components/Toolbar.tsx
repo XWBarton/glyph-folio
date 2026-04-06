@@ -12,9 +12,10 @@ interface Props {
   lastSaved: Date | null
   syncMode: SyncMode
   syncStatus: string
-  onExportPdf: () => void
+  hasActiveNote: boolean
   onSettings: () => void
   onOpenNotes: () => void
+  onShare: (kind: 'pdf' | 'source') => void
 }
 
 function formatLastSaved(date: Date): string {
@@ -27,7 +28,7 @@ function formatLastSaved(date: Date): string {
 
 export function Toolbar({
   noteTitle, isDirty, isCompiling, hasError, hasPdf,
-  lastSaved, syncMode, syncStatus, onExportPdf, onSettings, onOpenNotes
+  lastSaved, syncMode, syncStatus, hasActiveNote, onSettings, onOpenNotes, onShare
 }: Props) {
   const [, forceUpdate] = React.useReducer(x => x + 1, 0)
   React.useEffect(() => {
@@ -126,7 +127,7 @@ export function Toolbar({
         flexShrink: 0,
       }}>
         <StatusPill isCompiling={isCompiling} hasError={hasError} />
-        <ExportBtn onClick={onExportPdf} disabled={!hasPdf} />
+        <ShareDropdown onShare={onShare} hasPdf={hasPdf} hasActiveNote={hasActiveNote} />
         <GearBtn onClick={onSettings} />
       </div>
     </div>
@@ -219,31 +220,104 @@ function NotesBtn({ onClick }: { onClick: () => void }) {
   )
 }
 
-function ExportBtn({ onClick, disabled }: { onClick: () => void; disabled: boolean }) {
+function ShareDropdown({ onShare, hasPdf, hasActiveNote }: {
+  onShare: (kind: 'pdf' | 'source') => void
+  hasPdf: boolean
+  hasActiveNote: boolean
+}) {
+  const [open, setOpen] = React.useState(false)
+  const ref = React.useRef<HTMLDivElement>(null)
+
+  React.useEffect(() => {
+    if (!open) return
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [open])
+
+  const disabled = !hasActiveNote
+  const btnStyle: React.CSSProperties = {
+    background: disabled ? 'rgba(255,255,255,0.3)' : open ? 'rgba(37,99,235,0.18)' : 'rgba(37,99,235,0.10)',
+    color: disabled ? 'var(--overlay)' : 'var(--accent)',
+    border: `1px solid ${disabled ? 'rgba(255,255,255,0.5)' : 'rgba(37,99,235,0.25)'}`,
+    borderRadius: 'var(--radius-sm)',
+    padding: '4px 11px',
+    fontSize: 12,
+    cursor: disabled ? 'default' : 'pointer',
+    letterSpacing: '-0.01em',
+    transition: 'all 0.12s',
+    backdropFilter: 'blur(8px)',
+    WebkitBackdropFilter: 'blur(8px)',
+  }
+  const itemStyle = (hovered: boolean): React.CSSProperties => ({
+    padding: '6px 14px',
+    fontSize: 12,
+    cursor: 'pointer',
+    color: hovered ? 'var(--accent)' : 'var(--text)',
+    background: hovered ? 'rgba(37,99,235,0.07)' : 'transparent',
+    borderRadius: 6,
+    whiteSpace: 'nowrap' as const,
+    transition: 'background 0.1s',
+  })
+
+  return (
+    <div ref={ref} style={{ position: 'relative' }}>
+      <button
+        disabled={disabled}
+        onClick={() => !disabled && setOpen(v => !v)}
+        style={btnStyle}
+      >
+        Share ▾
+      </button>
+      {open && (
+        <div style={{
+          position: 'absolute', right: 0, top: 'calc(100% + 6px)',
+          background: 'rgba(255,255,255,0.88)',
+          backdropFilter: 'blur(28px) saturate(200%)',
+          WebkitBackdropFilter: 'blur(28px) saturate(200%)',
+          border: '1px solid rgba(255,255,255,0.8)',
+          borderRadius: 10,
+          boxShadow: '0 8px 32px rgba(0,40,120,0.13), 0 2px 8px rgba(0,0,0,0.07)',
+          padding: '4px',
+          zIndex: 200,
+          minWidth: 140,
+          WebkitAppRegion: 'no-drag' as React.CSSProperties['WebkitAppRegion'],
+        }}>
+          <DropdownItem
+            label="Export PDF"
+            disabled={!hasPdf}
+            style={itemStyle}
+            onClick={() => { setOpen(false); onShare('pdf') }}
+          />
+          <DropdownItem
+            label="Share Source…"
+            disabled={false}
+            style={itemStyle}
+            onClick={() => { setOpen(false); onShare('source') }}
+          />
+        </div>
+      )}
+    </div>
+  )
+}
+
+function DropdownItem({ label, disabled, style, onClick }: {
+  label: string; disabled: boolean
+  style: (hovered: boolean) => React.CSSProperties
+  onClick: () => void
+}) {
   const [hovered, setHovered] = React.useState(false)
   return (
-    <button
-      onClick={onClick}
-      disabled={disabled}
-      title="Export PDF (⌘⇧E)"
+    <div
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
-      style={{
-        background: disabled ? 'rgba(255,255,255,0.3)' : hovered ? 'rgba(37,99,235,0.18)' : 'rgba(37,99,235,0.10)',
-        color: disabled ? 'var(--overlay)' : 'var(--accent)',
-        border: `1px solid ${disabled ? 'rgba(255,255,255,0.5)' : 'rgba(37,99,235,0.25)'}`,
-        borderRadius: 'var(--radius-sm)',
-        padding: '4px 11px',
-        fontSize: 12,
-        cursor: disabled ? 'default' : 'pointer',
-        letterSpacing: '-0.01em',
-        transition: 'all 0.12s',
-        backdropFilter: 'blur(8px)',
-        WebkitBackdropFilter: 'blur(8px)',
-      }}
+      onClick={disabled ? undefined : onClick}
+      style={{ ...style(hovered && !disabled), opacity: disabled ? 0.4 : 1, cursor: disabled ? 'default' : 'pointer' }}
     >
-      Export PDF
-    </button>
+      {label}
+    </div>
   )
 }
 

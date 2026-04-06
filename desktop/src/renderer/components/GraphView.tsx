@@ -21,12 +21,23 @@ interface GEdge { source: string; target: string }
 
 const TAG_PALETTE = [
   '#2563eb', '#059669', '#7c3aed', '#ea580c', '#db2777', '#0891b2',
-  '#65a30d', '#dc2626', '#d97706', '#4f46e5',
+  '#65a30d', '#dc2626', '#d97706', '#4f46e5', '#0f766e', '#9333ea',
 ]
 function tagHue(tag: string): string {
   let h = 0
   for (let i = 0; i < tag.length; i++) h = (h * 31 + tag.charCodeAt(i)) >>> 0
   return TAG_PALETTE[h % TAG_PALETTE.length]
+}
+
+function loadTagColors(): Record<string, string> {
+  try { return JSON.parse(localStorage.getItem('glyph-tag-colors') ?? '{}') } catch { return {} }
+}
+function saveTagColors(colors: Record<string, string>) {
+  localStorage.setItem('glyph-tag-colors', JSON.stringify(colors))
+}
+function resolveColor(node: GNode, tagColors: Record<string, string>): string {
+  const tag = node.type === 'tag' ? node.label : node.tags[0]
+  return tag ? (tagColors[tag] ?? tagHue(tag)) : '#2563eb'
 }
 
 function hexToRgb(hex: string) {
@@ -135,7 +146,8 @@ function draw(
   hoveredId: string | null,
   activeNoteId: string | null,
   dpr: number,
-  vp: Viewport
+  vp: Viewport,
+  tagColors: Record<string, string>
 ) {
   const { width, height } = ctx.canvas
   ctx.clearRect(0, 0, width, height)
@@ -177,12 +189,7 @@ function draw(
     const isTag = n.type === 'tag'
     const r = isTag ? 6 : isActive ? 10 : 8
 
-    let color = '#2563eb'
-    if (isTag) {
-      color = tagHue(n.label)
-    } else if (n.tags.length > 0) {
-      color = tagHue(n.tags[0])
-    }
+    const color = resolveColor(n, tagColors)
 
     const { r: cr, g: cg, b: cb } = hexToRgb(color)
     const alpha = isDimmed ? 0.2 : 1
@@ -238,6 +245,10 @@ export function GraphView({ notes, lens, activeNoteId, onSelect }: Props) {
   const panningRef  = useRef<{ startX: number; startY: number; vpX: number; vpY: number } | null>(null)
   const viewportRef = useRef<Viewport>({ x: 0, y: 0, scale: 1 })
   const [hoveredId, setHoveredId] = useState<string | null>(null)
+  const [tagColors, setTagColors] = useState<Record<string, string>>(loadTagColors)
+  const tagColorsRef = useRef(tagColors)
+  tagColorsRef.current = tagColors
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; tag: string } | null>(null)
   const lensRef   = useRef(lens)
   lensRef.current = lens
   const activeRef = useRef(activeNoteId)
@@ -251,7 +262,7 @@ export function GraphView({ notes, lens, activeNoteId, onSelect }: Props) {
   const redraw = useCallback(() => {
     const canvas = getCanvas(); if (!canvas) return
     const ctx = canvas.getContext('2d'); if (!ctx) return
-    draw(ctx, nodesRef.current, edgesRef.current, lensRef.current, hovered.current, activeRef.current, getDpr(), viewportRef.current)
+    draw(ctx, nodesRef.current, edgesRef.current, lensRef.current, hovered.current, activeRef.current, getDpr(), viewportRef.current, tagColorsRef.current)
   }, [])
 
   const loop = useCallback(() => {
@@ -424,6 +435,26 @@ export function GraphView({ notes, lens, activeNoteId, onSelect }: Props) {
     if (id && !id.startsWith('tag:')) onSelect(id)
   }, [hitTest, onSelect])
 
+  const handleContextMenu = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
+    e.preventDefault()
+    const { x, y } = getCanvasXY(e)
+    const id = hitTest(x, y)
+    if (!id) return
+    const node = nodesRef.current.find(n => n.id === id)
+    if (!node) return
+    const tag = node.type === 'tag' ? node.label : node.tags[0]
+    if (!tag) return
+    setContextMenu({ x: e.clientX, y: e.clientY, tag })
+  }, [hitTest])
+
+  // Close context menu on any outside click
+  useEffect(() => {
+    if (!contextMenu) return
+    const close = () => setContextMenu(null)
+    window.addEventListener('mousedown', close)
+    return () => window.removeEventListener('mousedown', close)
+  }, [contextMenu])
+
   const handleMouseLeave = useCallback(() => {
     draggingRef.current = null
     panningRef.current = null
@@ -466,6 +497,7 @@ export function GraphView({ notes, lens, activeNoteId, onSelect }: Props) {
         onMouseUp={handleMouseUp}
         onClick={handleClick}
         onMouseLeave={handleMouseLeave}
+        onContextMenu={handleContextMenu}
       />
       {notes.length === 0 && (
         <div style={{
@@ -476,6 +508,70 @@ export function GraphView({ notes, lens, activeNoteId, onSelect }: Props) {
           No notes to graph yet
         </div>
       )}
+      {contextMenu && (
+        <div
+          onMouseDown={e => e.stopPropagation()}
+          style={{
+            position: 'fixed', left: contextMenu.x, top: contextMenu.y,
+            background: 'rgba(255,255,255,0.97)',
+            backdropFilter: 'blur(16px)',
+            border: '1px solid rgba(0,0,0,0.09)',
+            borderRadius: 10,
+            padding: '10px 12px 12px',
+            boxShadow: '0 8px 32px rgba(0,0,0,0.13)',
+            zIndex: 9999, minWidth: 168,
+          }}
+        >
+          <div style={{ fontSize: 11, color: 'var(--subtext)', marginBottom: 8, letterSpacing: '-0.01em' }}>
+            #{contextMenu.tag}
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 5 }}>
+            {TAG_PALETTE.map(hex => {
+              const active = (tagColorsRef.current[contextMenu.tag] ?? tagHue(contextMenu.tag)) === hex
+              return (
+                <button
+                  key={hex}
+                  onClick={() => {
+                    const updated = { ...tagColorsRef.current, [contextMenu.tag]: hex }
+                    saveTagColors(updated)
+                    setTagColors(updated)
+                    setContextMenu(null)
+                    redraw()
+                  }}
+                  style={{
+                    width: 20, height: 20, borderRadius: '50%',
+                    background: hex, border: 'none', cursor: 'pointer', padding: 0,
+                    outline: active ? `2px solid ${hex}` : 'none',
+                    outlineOffset: 2,
+                    transform: active ? 'scale(1.2)' : 'scale(1)',
+                    transition: 'transform 0.1s',
+                  }}
+                />
+              )
+            })}
+          </div>
+          {tagColorsRef.current[contextMenu.tag] && (
+            <button
+              onClick={() => {
+                const updated = { ...tagColorsRef.current }
+                delete updated[contextMenu.tag]
+                saveTagColors(updated)
+                setTagColors(updated)
+                setContextMenu(null)
+                redraw()
+              }}
+              style={{
+                marginTop: 8, width: '100%', background: 'none', border: 'none',
+                fontSize: 11, color: 'var(--subtext)', cursor: 'pointer',
+                padding: '3px 0', textAlign: 'left', letterSpacing: '-0.01em',
+              }}
+            >
+              Reset to default
+            </button>
+          )}
+        </div>
+      )}
+
       {hoveredId && !hoveredId.startsWith('tag:') && (() => {
         const n = nodesRef.current.find(x => x.id === hoveredId)
         if (!n) return null

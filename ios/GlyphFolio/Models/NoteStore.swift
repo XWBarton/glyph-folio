@@ -60,8 +60,22 @@ class NoteStore: ObservableObject {
     // ── Create ───────────────────────────────────────────────────────────────
 
     func create(title: String? = nil) async {
-        await flushPendingSave()
-        let id = Note.makeId(title: title)
+        // Capture pending save state synchronously before any async work so
+        // we can flush the old note in the background while navigating immediately.
+        let staleNote = activeNote
+        let staleBody = pendingBody
+        autoSaveTask?.cancel()
+        pendingBody = nil
+
+        // Avoid filename collisions (e.g. multiple "New Note" taps on the same day)
+        let baseId = Note.makeId(title: title)
+        let existingIds = Set(notes.map(\.id))
+        var id = baseId
+        var counter = 1
+        while existingIds.contains(id) {
+            id = "\(baseId)-\(counter)"
+            counter += 1
+        }
         let noteTitle = title ?? "New Note"
         let now = Date()
         let datePart = now.formatted(.dateTime.month(.wide).day().year())
@@ -86,9 +100,22 @@ class NoteStore: ObservableObject {
             modifiedAt: now,
             filePath: url
         )
-        try? await provider.writeNote(note)
-        await load()
-        activeNote = notes.first { $0.id == id } ?? note
+
+        // Navigate immediately — insert into list and open the note before any I/O
+        notes.removeAll { $0.id == id }
+        notes.insert(note, at: 0)
+        activeNote = note
+
+        // Flush old note + write new note to disk/server in the background
+        let p = provider
+        Task {
+            if var n = staleNote, let pending = staleBody {
+                n.body = pending
+                n.modifiedAt = Date()
+                try? await p.writeNote(n)
+            }
+            try? await p.writeNote(note)
+        }
     }
 
     // ── Update body (debounced auto-save) ─────────────────────────────────────
@@ -161,6 +188,64 @@ class NoteStore: ObservableObject {
         return try await provider.compilePDF(note: note)
     }
 
+    // ── Attachments ───────────────────────────────────────────────────────────
+
+    /// Upload an image to the sync provider. Returns the sanitised filename stored by the server.
+    func uploadAttachment(noteId: String, filename: String, data: Data) async throws -> String {
+        return try await provider.uploadAttachment(noteId: noteId, filename: filename, data: data)
+    }
+
+    // ── Share source ──────────────────────────────────────────────────────────
+
+    /// Build a shareable item for the note: a bare .typ URL when no attachments
+    /// are referenced, or a .glyph zip bundle when there are.
+    func buildShareItem(for note: Note) async -> URL? {
+        let body = note.body
+
+        // Find all attachment filenames referenced in the body
+        let pattern = #"image\("attachments/[^/]+/([^"]+)"\)"#
+        let regex = try? NSRegularExpression(pattern: pattern)
+        let ns = body as NSString
+        let referenced: [String] = (regex?.matches(in: body, range: NSRange(location: 0, length: ns.length)) ?? [])
+            .compactMap { m -> String? in
+                guard m.numberOfRanges > 1 else { return nil }
+                return ns.substring(with: m.range(at: 1))
+            }
+
+        let tmpDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("glyph-share-\(note.id)", isDirectory: true)
+        try? FileManager.default.createDirectory(at: tmpDir, withIntermediateDirectories: true)
+
+        // Always write a fresh .typ from current in-memory body
+        let typURL = tmpDir.appendingPathComponent("\(note.id).typ")
+        guard (try? body.write(to: typURL, atomically: true, encoding: .utf8)) != nil else { return nil }
+
+        guard !referenced.isEmpty else {
+            return typURL  // no attachments → share the .typ directly
+        }
+
+        // Build a .glyph zip bundle
+        var zip = ZipArchive()
+        zip.add(name: "\(note.id).typ", data: Data(body.utf8))
+
+        for filename in referenced {
+            let attachData: Data?
+            do {
+                attachData = try await provider.downloadAttachment(noteId: note.id, filename: filename)
+            } catch {
+                attachData = nil
+            }
+            if let d = attachData {
+                zip.add(name: "attachments/\(note.id)/\(filename)", data: d)
+            }
+        }
+
+        let bundleURL = tmpDir.appendingPathComponent("\(note.id).glyph")
+        let zipData = zip.finalize()
+        guard (try? zipData.write(to: bundleURL)) != nil else { return nil }
+        return bundleURL
+    }
+
     // ── Reload settings ───────────────────────────────────────────────────────
 
     func reloadSettings() async {
@@ -171,15 +256,15 @@ class NoteStore: ObservableObject {
 
 // ── Local provider (no sync) ─────────────────────────────────────────────────
 
-private class LocalSyncProvider: SyncProvider {
-    private var dir: URL {
+private actor LocalSyncProvider: SyncProvider {
+    nonisolated private var dir: URL {
         let d = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("GlyphFolio/local")
         try? FileManager.default.createDirectory(at: d, withIntermediateDirectories: true)
         return d
     }
 
-    func notesDirectory() -> URL? { dir }
+    nonisolated func notesDirectory() -> URL? { dir }
 
     func listNotes() async throws -> [Note] {
         let contents = (try? FileManager.default.contentsOfDirectory(
@@ -219,4 +304,13 @@ private class LocalSyncProvider: SyncProvider {
     func compilePDF(note: Note) async throws -> Data {
         throw SyncError.pdfNotAvailable("PDF export requires server mode. Switch to Server in Settings.")
     }
+
+    func listAttachments(noteId: String) async throws -> [String] { [] }
+    func uploadAttachment(noteId: String, filename: String, data: Data) async throws -> String {
+        throw SyncError.networkError("Attachments require server mode.")
+    }
+    func downloadAttachment(noteId: String, filename: String) async throws -> Data {
+        throw SyncError.networkError("Attachments require server mode.")
+    }
+    func deleteAttachment(noteId: String, filename: String) async throws {}
 }

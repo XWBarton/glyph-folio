@@ -3,6 +3,7 @@ import { spawn, ChildProcess, execSync } from 'child_process'
 import { join } from 'path'
 import { writeFileSync, readFileSync, unlinkSync, existsSync } from 'fs'
 import { randomUUID } from 'crypto'
+import { resolveNotesDir } from './notesManager'
 
 function findTypstBin(): string {
   try {
@@ -66,10 +67,11 @@ export async function compileTypst(content: string): Promise<CompileResult> {
     activeTempFiles = []
   }
 
-  const tmpDir = app.getPath('temp')
-  const id = randomUUID()
-  const inputPath  = join(tmpDir, `.glyph-folio-${id}.typ`)
-  const outputPath = join(tmpDir, `glyph-folio-${id}.pdf`)
+  const tmpDir    = app.getPath('temp')
+  const notesDir  = resolveNotesDir()
+  const id        = randomUUID()
+  const inputPath  = join(notesDir, `.glyph-folio-${id}.typ`)   // must be under --root
+  const outputPath = join(tmpDir,   `glyph-folio-${id}.pdf`)
   activeTempFiles = [inputPath, outputPath]
 
   writeFileSync(inputPath, content, 'utf8')
@@ -77,7 +79,7 @@ export async function compileTypst(content: string): Promise<CompileResult> {
   return new Promise((resolve) => {
     const args = [
       'compile', inputPath, outputPath,
-      '--root', tmpDir,
+      '--root', resolveNotesDir(),
       '--diagnostic-format', 'short'
     ]
     // Ensure Homebrew and Cargo paths are included so package downloads work

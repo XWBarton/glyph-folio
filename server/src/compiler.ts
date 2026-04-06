@@ -4,6 +4,7 @@ import { join } from 'path'
 import { execSync } from 'child_process'
 import { randomUUID } from 'crypto'
 import { tmpdir } from 'os'
+import { NOTES_DIR } from './storage'
 
 function findTypstBin(): string {
   try {
@@ -27,17 +28,17 @@ export type CompileResult =
   | { ok: false; error: string }
 
 export async function compileTypst(content: string): Promise<CompileResult> {
-  const tmp = tmpdir()
-  const id = randomUUID()
-  const inputPath  = join(tmp, `.glyph-folio-${id}.typ`)
-  const outputPath = join(tmp, `glyph-folio-${id}.pdf`)
+  const tmp        = tmpdir()
+  const id         = randomUUID()
+  const inputPath  = join(NOTES_DIR, `.glyph-folio-${id}.typ`)  // must be under --root
+  const outputPath = join(tmp,       `glyph-folio-${id}.pdf`)
 
   writeFileSync(inputPath, content, 'utf8')
 
   return new Promise((resolve) => {
     const child = spawn(TYPST_BIN, [
       'compile', inputPath, outputPath,
-      '--root', tmp,
+      '--root', NOTES_DIR,
       '--diagnostic-format', 'short',
     ])
 

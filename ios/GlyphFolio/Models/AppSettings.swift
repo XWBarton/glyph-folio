@@ -13,6 +13,13 @@ class AppSettings: ObservableObject {
     @Published var authToken: String {
         didSet { UserDefaults.standard.set(authToken, forKey: "authToken") }
     }
+    @Published var tagColors: [String: String] {
+        didSet {
+            if let data = try? JSONEncoder().encode(tagColors) {
+                UserDefaults.standard.set(data, forKey: "tagColors")
+            }
+        }
+    }
 
     enum SyncMode: String, CaseIterable {
         case local  = "local"
@@ -30,9 +37,10 @@ class AppSettings: ObservableObject {
 
     private init() {
         let rawMode = UserDefaults.standard.string(forKey: "syncMode") ?? "local"
-        // If a previous build stored "icloud", fall back to local.
         self.syncMode  = SyncMode(rawValue: rawMode) ?? .local
         self.serverUrl = UserDefaults.standard.string(forKey: "serverUrl") ?? ""
         self.authToken = UserDefaults.standard.string(forKey: "authToken") ?? ""
+        let colorsData = UserDefaults.standard.data(forKey: "tagColors") ?? Data()
+        self.tagColors = (try? JSONDecoder().decode([String: String].self, from: colorsData)) ?? [:]
     }
 }

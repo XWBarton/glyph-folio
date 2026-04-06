@@ -34,6 +34,11 @@ export function buildMenu(win: BrowserWindow | null): void {
           accelerator: 'CmdOrCtrl+Shift+E',
           click: () => win?.webContents.send('menu:export-pdf')
         },
+        {
+          label: 'Share Source…',
+          accelerator: 'CmdOrCtrl+Shift+S',
+          click: () => win?.webContents.send('menu:share-source')
+        },
         ...(process.platform !== 'darwin' ? [
           { type: 'separator' as const },
           { role: 'quit' as const }

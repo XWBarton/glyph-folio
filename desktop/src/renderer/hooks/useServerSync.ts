@@ -1,6 +1,13 @@
 import { useState, useCallback, useRef } from 'react'
 import { merge3 } from '../lib/merge3'
 
+function arrayBufferToBase64(buf: ArrayBuffer): string {
+  const bytes = new Uint8Array(buf)
+  let binary = ''
+  for (let i = 0; i < bytes.byteLength; i++) binary += String.fromCharCode(bytes[i])
+  return btoa(binary)
+}
+
 export type SyncStatus = 'synced' | 'syncing' | 'offline' | 'idle'
 
 function normalizeUrl(url: string): string {
@@ -188,6 +195,45 @@ export function useServerSync(serverUrl: string, enabled: boolean, authToken?: s
       }
 
       await Promise.all(tasks)
+
+      // Sync attachments for all notes present on both sides
+      const allIds = [...new Set([...serverNotes.map(n => n.id), ...localNotes.map(n => n.id)])]
+      await Promise.all(allIds.map(async (noteId) => {
+        try {
+          const [serverRes, localFiles] = await Promise.all([
+            fetch(`${base}/api/notes/${encodeURIComponent(noteId)}/attachments`, { headers }),
+            window.api.attachmentsList(noteId),
+          ])
+          if (!serverRes.ok) return
+          const serverFiles: { filename: string }[] = await serverRes.json()
+          const serverSet = new Set(serverFiles.map(f => f.filename))
+          const localSet  = new Set(localFiles)
+
+          await Promise.all([
+            ...serverFiles.filter(f => !localSet.has(f.filename)).map(async ({ filename }) => {
+              try {
+                const r = await fetch(`${base}/api/notes/${encodeURIComponent(noteId)}/attachments/${encodeURIComponent(filename)}`, { headers })
+                if (!r.ok) return
+                const buf = await r.arrayBuffer()
+                const b64 = arrayBufferToBase64(buf)
+                await window.api.attachmentsWrite(noteId, filename, b64)
+              } catch {}
+            }),
+            ...localFiles.filter(f => !serverSet.has(f)).map(async (filename) => {
+              const att = await window.api.attachmentsRead(noteId, filename)
+              if (!att) return
+              try {
+                await fetch(`${base}/api/notes/${encodeURIComponent(noteId)}/attachments`, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json', ...headers },
+                  body: JSON.stringify({ filename, dataBase64: att.dataBase64 })
+                })
+              } catch {}
+            }),
+          ])
+        } catch {}
+      }))
+
       setStatus('synced')
       return 'synced'
     } catch {
@@ -206,7 +252,74 @@ export function useServerSync(serverUrl: string, enabled: boolean, authToken?: s
     } catch { /* offline — note is already gone locally, that's fine */ }
   }, [enabled, serverUrl, authToken])
 
-  return { status, pushNote, compilePdf, syncAll, deleteNote }
+  /** Upload a locally-saved attachment to the server. Call after attachmentsSaveFile/attachmentsWrite. */
+  const uploadAttachment = useCallback(async (noteId: string, filename: string) => {
+    if (!enabled || !serverUrl) return
+    const att = await window.api.attachmentsRead(noteId, filename)
+    if (!att) return
+    try {
+      await fetch(`${base}/api/notes/${encodeURIComponent(noteId)}/attachments`, {
+        method: 'POST',
+        headers: authHeaders(),
+        body: JSON.stringify({ filename, dataBase64: att.dataBase64 })
+      })
+    } catch { /* offline */ }
+  }, [enabled, serverUrl, authToken])
+
+  /** Sync attachments for all notes: download server-only, upload local-only. */
+  const syncAttachments = useCallback(async (noteIds: string[]) => {
+    if (!enabled || !serverUrl) return
+    const headers = authToken ? { 'Authorization': `Bearer ${authToken}` } : {}
+    await Promise.all(noteIds.map(async (noteId) => {
+      try {
+        const [serverRes, localFiles] = await Promise.all([
+          fetch(`${base}/api/notes/${encodeURIComponent(noteId)}/attachments`, { headers }),
+          window.api.attachmentsList(noteId),
+        ])
+        if (!serverRes.ok) return
+        const serverFiles: { filename: string }[] = await serverRes.json()
+        const serverSet = new Set(serverFiles.map(f => f.filename))
+        const localSet  = new Set(localFiles)
+
+        // Download server-only attachments
+        await Promise.all(
+          serverFiles
+            .filter(f => !localSet.has(f.filename))
+            .map(async ({ filename }) => {
+              try {
+                const r = await fetch(
+                  `${base}/api/notes/${encodeURIComponent(noteId)}/attachments/${encodeURIComponent(filename)}`,
+                  { headers }
+                )
+                if (!r.ok) return
+                const buf = await r.arrayBuffer()
+                const b64 = arrayBufferToBase64(buf)
+                await window.api.attachmentsWrite(noteId, filename, b64)
+              } catch {}
+            })
+        )
+
+        // Upload local-only attachments
+        await Promise.all(
+          localFiles
+            .filter(f => !serverSet.has(f))
+            .map(async (filename) => {
+              const att = await window.api.attachmentsRead(noteId, filename)
+              if (!att) return
+              try {
+                await fetch(`${base}/api/notes/${encodeURIComponent(noteId)}/attachments`, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json', ...headers },
+                  body: JSON.stringify({ filename, dataBase64: att.dataBase64 })
+                })
+              } catch {}
+            })
+        )
+      } catch {}
+    }))
+  }, [enabled, serverUrl, authToken])
+
+  return { status, pushNote, compilePdf, syncAll, deleteNote, uploadAttachment, syncAttachments }
 }
 
 function buildTemplate(body: string, title: string, date: string): string {

@@ -1,14 +1,17 @@
 import express from 'express'
 import cors from 'cors'
 import { authMiddleware } from './auth'
-import { listNotes, readNote, writeNote, deleteNote, ensureNotesDir } from './storage'
+import {
+  listNotes, readNote, writeNote, deleteNote, ensureNotesDir,
+  listAttachments, writeAttachment, readAttachment, deleteAttachment
+} from './storage'
 import { compileTypst } from './compiler'
 
 const app = express()
 const PORT = Number(process.env['PORT'] ?? 3001)
 
 app.use(cors())
-app.use(express.json({ limit: '4mb' }))
+app.use(express.json({ limit: '20mb' }))
 app.use(authMiddleware)
 
 ensureNotesDir()
@@ -45,6 +48,49 @@ app.put('/api/notes/:id', (req, res) => {
 app.delete('/api/notes/:id', (req, res) => {
   try {
     deleteNote(req.params['id']!)
+    res.json({ ok: true })
+  } catch (e) {
+    res.status(500).json({ error: String(e) })
+  }
+})
+
+// ── Attachments ───────────────────────────────────────────────────────────────
+
+app.get('/api/notes/:id/attachments', (req, res) => {
+  const files = listAttachments(req.params['id']!)
+  res.json(files.map(f => ({ filename: f })))
+})
+
+app.post('/api/notes/:id/attachments', (req, res) => {
+  const { filename, dataBase64 } = req.body as { filename?: string; dataBase64?: string }
+  if (!filename || !dataBase64) { res.status(400).json({ error: 'filename and dataBase64 required' }); return }
+  // Sanitise filename: allow only safe characters
+  const safe = filename.replace(/[^a-zA-Z0-9._\-]/g, '_')
+  try {
+    writeAttachment(req.params['id']!, safe, Buffer.from(dataBase64, 'base64'))
+    res.json({ ok: true, filename: safe })
+  } catch (e) {
+    res.status(500).json({ error: String(e) })
+  }
+})
+
+app.get('/api/notes/:id/attachments/:filename', (req, res) => {
+  const buf = readAttachment(req.params['id']!, req.params['filename']!)
+  if (!buf) { res.status(404).json({ error: 'Not found' }); return }
+  const fname = req.params['filename']!
+  const ext = fname.split('.').pop()?.toLowerCase() ?? ''
+  const mimes: Record<string, string> = {
+    png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg',
+    gif: 'image/gif', webp: 'image/webp', svg: 'image/svg+xml',
+    pdf: 'application/pdf'
+  }
+  res.set('Content-Type', mimes[ext] ?? 'application/octet-stream')
+  res.send(buf)
+})
+
+app.delete('/api/notes/:id/attachments/:filename', (req, res) => {
+  try {
+    deleteAttachment(req.params['id']!, req.params['filename']!)
     res.json({ ok: true })
   } catch (e) {
     res.status(500).json({ error: String(e) })

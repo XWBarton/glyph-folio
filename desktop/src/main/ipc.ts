@@ -1,10 +1,13 @@
 import { ipcMain, dialog } from 'electron'
 import { getBase, setBase } from './syncBase'
-import { readFileSync, existsSync, readdirSync } from 'fs'
+import { readFileSync, writeFileSync, existsSync, readdirSync } from 'fs'
 import { basename, join, dirname } from 'path'
+import { execFileSync } from 'child_process'
 import { compileNote } from './compiler'
 import {
-  listNotes, readNote, writeNote, upsertNote, deleteNote, createNote, exportNotePdf, resolveNotesDir, searchNotes
+  listNotes, readNote, writeNote, upsertNote, deleteNote, createNote, exportNotePdf, resolveNotesDir, searchNotes,
+  listAttachments, readAttachmentBuffer, writeAttachmentBuffer, deleteAttachmentFile,
+  pickAndSaveAttachment, saveFileAsAttachment
 } from './notesManager'
 import { getStore } from './store'
 import { net } from 'electron'
@@ -138,6 +141,105 @@ export function registerIpcHandlers(): void {
       return { aff, dic, name, affPath, dicPath }
     } catch {
       return null
+    }
+  })
+
+  // ── Attachments ────────────────────────────────────────────────────────────
+
+  ipcMain.handle('attachments:list', async (_event, noteId: string) => {
+    return listAttachments(noteId)
+  })
+
+  ipcMain.handle('attachments:pick-and-save', async (_event, noteId: string) => {
+    return pickAndSaveAttachment(noteId)
+  })
+
+  ipcMain.handle('attachments:save-file', async (_event, noteId: string, srcPath: string) => {
+    try { return saveFileAsAttachment(noteId, srcPath) }
+    catch (e) { return { error: String(e) } }
+  })
+
+  ipcMain.handle('attachments:read', async (_event, noteId: string, filename: string) => {
+    const buf = readAttachmentBuffer(noteId, filename)
+    if (!buf) return null
+    return { dataBase64: buf.toString('base64') }
+  })
+
+  ipcMain.handle('attachments:write', async (_event, noteId: string, filename: string, dataBase64: string) => {
+    try {
+      writeAttachmentBuffer(noteId, filename, Buffer.from(dataBase64, 'base64'))
+      return { ok: true }
+    } catch (e) {
+      return { error: String(e) }
+    }
+  })
+
+  ipcMain.handle('attachments:delete', async (_event, noteId: string, filename: string) => {
+    try { deleteAttachmentFile(noteId, filename); return { ok: true } }
+    catch (e) { return { error: String(e) } }
+  })
+
+  // ── Share source (.typ or .glyph bundle) ───────────────────────────────────
+
+  ipcMain.handle('notes:share-source', async (_event, noteId: string, filePath: string) => {
+    const attachments = listAttachments(noteId)
+    const hasAttachments = attachments.length > 0
+
+    if (!hasAttachments) {
+      // No attachments — just save a copy of the .typ file
+      const result = await dialog.showSaveDialog({
+        defaultPath: `${noteId}.typ`,
+        filters: [{ name: 'Typst document', extensions: ['typ'] }],
+      })
+      if (result.canceled || !result.filePath) return { ok: false }
+      try {
+        const body = readFileSync(filePath, 'utf8')
+        writeFileSync(result.filePath, body, 'utf8')
+        return { ok: true }
+      } catch (e) {
+        return { ok: false, error: String(e) }
+      }
+    }
+
+    // Has attachments — build a .glyph zip bundle
+    const result = await dialog.showSaveDialog({
+      defaultPath: `${noteId}.glyph`,
+      filters: [{ name: 'Glyph Folio bundle', extensions: ['glyph'] }],
+    })
+    if (result.canceled || !result.filePath) return { ok: false }
+
+    try {
+      const { app } = await import('electron')
+      const { mkdirSync, copyFileSync, rmSync } = await import('fs')
+      const stagingDir = join(app.getPath('temp'), `glyph-share-${noteId}`)
+      const notesDir = resolveNotesDir()
+
+      // Stage .typ
+      mkdirSync(stagingDir, { recursive: true })
+      copyFileSync(filePath, join(stagingDir, `${noteId}.typ`))
+
+      // Stage attachments preserving directory structure
+      const attStagingDir = join(stagingDir, 'attachments', noteId)
+      mkdirSync(attStagingDir, { recursive: true })
+      for (const att of attachments) {
+        copyFileSync(join(notesDir, 'attachments', noteId, att), join(attStagingDir, att))
+      }
+
+      // Zip from staging dir so paths inside zip are relative
+      if (process.platform === 'win32') {
+        execFileSync('powershell', ['-Command',
+          `Compress-Archive -Path '${stagingDir}\\*' -DestinationPath '${result.filePath}' -Force`
+        ])
+      } else {
+        execFileSync('sh', ['-c',
+          `cd '${stagingDir.replace(/'/g, "'\\''")}' && zip -r '${result.filePath.replace(/'/g, "'\\''")}' .`
+        ])
+      }
+
+      try { rmSync(stagingDir, { recursive: true }) } catch {}
+      return { ok: true }
+    } catch (e) {
+      return { ok: false, error: String(e) }
     }
   })
 

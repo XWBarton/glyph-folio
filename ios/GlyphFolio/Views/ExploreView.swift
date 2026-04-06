@@ -3,8 +3,11 @@ import SwiftUI
 struct ExploreView: View {
     @EnvironmentObject var noteStore: NoteStore
     @Binding var selectedTab: Int
+    @ObservedObject private var settings = AppSettings.shared
     @State private var mode = 0          // 0 = Tags, 1 = Graph
     @State private var selectedTag: String? = nil
+    @State private var graphLens: GraphLens = .links
+    @State private var colorPickerTag: String? = nil
 
     private var allTags: [(tag: String, count: Int)] {
         var counts: [String: Int] = [:]
@@ -39,6 +42,31 @@ struct ExploreView: View {
         .navigationBarTitleDisplayMode(.large)
         .background(backgroundGradient)
         .scrollContentBackground(.hidden)
+        .sheet(isPresented: Binding(
+            get: { colorPickerTag != nil },
+            set: { if !$0 { colorPickerTag = nil } }
+        )) {
+            if let tag = colorPickerTag {
+                TagColorPickerSheet(
+                    tag: tag,
+                    current: settings.tagColors[tag],
+                    onPick: { hex in
+                        var colors = settings.tagColors
+                        colors[tag] = hex
+                        settings.tagColors = colors
+                        colorPickerTag = nil
+                    },
+                    onReset: {
+                        var colors = settings.tagColors
+                        colors.removeValue(forKey: tag)
+                        settings.tagColors = colors
+                        colorPickerTag = nil
+                    }
+                )
+                .presentationDetents([.height(260)])
+                .presentationDragIndicator(.visible)
+            }
+        }
     }
 
     // ── Tags mode ─────────────────────────────────────────────────────────────
@@ -58,9 +86,13 @@ struct ExploreView: View {
                         }
                         ForEach(allTags, id: \.tag) { item in
                             TagPill(label: item.tag, count: item.count,
-                                    selected: selectedTag == item.tag) {
+                                    selected: selectedTag == item.tag,
+                                    color: settings.tagColors[item.tag].map(Color.init(hex:)) ?? tagHashColor(item.tag)) {
                                 selectedTag = selectedTag == item.tag ? nil : item.tag
                             }
+                            .simultaneousGesture(
+                                LongPressGesture().onEnded { _ in colorPickerTag = item.tag }
+                            )
                         }
                     }
                     .padding(.horizontal)
@@ -109,9 +141,21 @@ struct ExploreView: View {
                 Spacer()
             }
         } else {
-            GraphView(notes: noteStore.notes) { note in
-                Task { await noteStore.select(note) }
-                selectedTab = 0
+            VStack(spacing: 0) {
+                Picker("Lens", selection: $graphLens) {
+                    Text("Links").tag(GraphLens.links)
+                    Text("Tags").tag(GraphLens.tags)
+                }
+                .pickerStyle(.segmented)
+                .padding(.horizontal)
+                .padding(.vertical, 8)
+
+                Divider()
+
+                GraphView(notes: noteStore.notes, lens: graphLens) { note in
+                    Task { await noteStore.select(note) }
+                    selectedTab = 0
+                }
             }
         }
     }
@@ -123,11 +167,15 @@ private struct TagPill: View {
     let label: String
     let count: Int
     let selected: Bool
+    var color: Color = .glyphAccent
     let action: () -> Void
 
     var body: some View {
         Button(action: action) {
             HStack(spacing: 4) {
+                Circle()
+                    .fill(color)
+                    .frame(width: 7, height: 7)
                 Text(label)
                     .font(.system(size: 13, weight: .medium))
                 Text("\(count)")
@@ -136,7 +184,7 @@ private struct TagPill: View {
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 6)
-            .background(selected ? Color.accentColor : Color.secondary.opacity(0.15))
+            .background(selected ? color : color.opacity(0.12))
             .foregroundStyle(selected ? .white : .primary)
             .clipShape(Capsule())
         }
@@ -164,6 +212,7 @@ private struct ExploreNoteList: View {
 private struct ExploreNoteRow: View {
     let note: Note
     let onSelect: (Note) -> Void
+    @ObservedObject private var settings = AppSettings.shared
 
     var body: some View {
         let tags = note.tags
@@ -174,12 +223,66 @@ private struct ExploreNoteRow: View {
                     .foregroundStyle(.primary)
                     .lineLimit(1)
                 if !tags.isEmpty {
-                    Text(tags.map { "#\($0)" }.joined(separator: "  "))
-                        .font(.system(size: 11))
-                        .foregroundStyle(.tint)
+                    HStack(spacing: 4) {
+                        ForEach(tags, id: \.self) { tag in
+                            let c: Color = settings.tagColors[tag].map(Color.init(hex:)) ?? tagHashColor(tag)
+                            Circle().fill(c).frame(width: 7, height: 7)
+                            Text("#\(tag)")
+                                .font(.system(size: 11))
+                                .foregroundStyle(c)
+                        }
+                    }
                 }
             }
             .padding(.vertical, 2)
+        }
+    }
+}
+
+// ── Tag color picker sheet ────────────────────────────────────────────────────
+
+private struct TagColorPickerSheet: View {
+    let tag: String
+    let current: String?
+    let onPick: (String) -> Void
+    let onReset: () -> Void
+
+    let columns = Array(repeating: GridItem(.flexible(), spacing: 12), count: 6)
+
+    var body: some View {
+        VStack(spacing: 16) {
+            Text("#\(tag)")
+                .font(.system(size: 16, weight: .semibold))
+                .padding(.top, 20)
+
+            LazyVGrid(columns: columns, spacing: 12) {
+                ForEach(tagColorPalette, id: \.self) { hex in
+                    let isSelected = current == hex
+                    Button {
+                        onPick(hex)
+                    } label: {
+                        ZStack {
+                            Circle().fill(Color(hex: hex))
+                            if isSelected {
+                                Circle().strokeBorder(.white, lineWidth: 2.5)
+                                Image(systemName: "checkmark")
+                                    .font(.system(size: 10, weight: .bold))
+                                    .foregroundStyle(.white)
+                            }
+                        }
+                        .frame(width: 40, height: 40)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(.horizontal, 24)
+
+            if current != nil {
+                Button("Reset to default", role: .destructive, action: onReset)
+                    .font(.system(size: 13))
+            }
+
+            Spacer()
         }
     }
 }

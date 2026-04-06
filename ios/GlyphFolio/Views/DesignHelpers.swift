@@ -26,4 +26,25 @@ var backgroundGradient: some View {
 /// Accent color matching --accent: #2563eb
 extension Color {
     static let glyphAccent = Color(red: 0.145, green: 0.388, blue: 0.922)
+
+    init(hex: String) {
+        var v: UInt64 = 0
+        Scanner(string: hex.trimmingCharacters(in: CharacterSet.alphanumerics.inverted)).scanHexInt64(&v)
+        self.init(red: Double((v >> 16) & 0xFF) / 255,
+                  green: Double((v >>  8) & 0xFF) / 255,
+                  blue:  Double( v        & 0xFF) / 255)
+    }
+}
+
+/// Shared 12-color palette — same as desktop TAG_PALETTE
+let tagColorPalette: [String] = [
+    "#2563eb", "#059669", "#7c3aed", "#ea580c", "#db2777", "#0891b2",
+    "#65a30d", "#dc2626", "#d97706", "#4f46e5", "#0f766e", "#9333ea",
+]
+
+/// Deterministic color from tag name — fallback when no user color is set
+func tagHashColor(_ tag: String) -> Color {
+    var h: UInt32 = 0
+    for c in tag.unicodeScalars { h = (h &* 31) &+ c.value }
+    return Color(hex: tagColorPalette[Int(h % UInt32(tagColorPalette.count))])
 }

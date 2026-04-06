@@ -70,7 +70,7 @@ export default function App() {
   const { pdfBytes, error, isCompiling, compile } = useNoteCompiler(body)
 
   // ── Server sync ───────────────────────────────────────────────────────────────
-  const { status: syncStatus, pushNote, syncAll, deleteNote: deleteNoteOnServer } = useServerSync(
+  const { status: syncStatus, pushNote, syncAll, deleteNote: deleteNoteOnServer, uploadAttachment } = useServerSync(
     settings.serverUrl,
     settings.syncMode === 'server',
     settings.authToken
@@ -116,6 +116,28 @@ export default function App() {
     updateBody(newBody)
   }, [updateBody])
 
+  // ── Image attachment ─────────────────────────────────────────────────────────
+
+  /** Open file picker, save locally, upload to server if needed. Returns filename or null. */
+  const handlePickImage = useCallback(async (): Promise<string | null> => {
+    const noteId = activeNote?.id
+    if (!noteId) return null
+    const result = await window.api.attachmentsPickAndSave(noteId)
+    if (!result || 'error' in result) return null
+    // Upload in background — don't block text insertion on server round-trip
+    if (settings.syncMode === 'server') uploadAttachment(noteId, result.filename)
+    return result.filename
+  }, [activeNote, settings.syncMode, uploadAttachment])
+
+  const handleDropImage = useCallback(async (srcPath: string): Promise<string | null> => {
+    const noteId = activeNote?.id
+    if (!noteId) return null
+    const result = await window.api.attachmentsSaveFile(noteId, srcPath)
+    if ('error' in result) return null
+    if (settings.syncMode === 'server') uploadAttachment(noteId, result.filename)
+    return result.filename
+  }, [activeNote, settings.syncMode, uploadAttachment])
+
   // ── Navigate to note by title (wiki links) ───────────────────────────────────
   const handleNavigate = useCallback((title: string) => {
     const target = notes.find(n => n.title.toLowerCase() === title.toLowerCase())
@@ -135,6 +157,13 @@ export default function App() {
     setSearchOpen(true) // reopen explorer so user can pick another note
   }, [deleteNote, deleteNoteOnServer, notes, settings.syncMode])
 
+  // ── Share source ─────────────────────────────────────────────────────────────
+  const handleShareSource = useCallback(async () => {
+    if (!activeNote) return
+    await flushSave()
+    await window.api.notesShareSource(activeNote.id, activeNote.filePath)
+  }, [activeNote, flushSave])
+
   // ── Export PDF ────────────────────────────────────────────────────────────────
   const exportPdf = useCallback(async () => {
     if (!pdfBytes || !activeNote) return
@@ -150,6 +179,7 @@ export default function App() {
       window.api.onMenuDelete(() => { if (activeNote) handleDelete(activeNote.filePath) }),
       window.api.onMenuExportPdf(exportPdf),
       window.api.onMenuRerender(compile),
+      window.api.onMenuShareSource(handleShareSource),
     ]
     return () => unsubs.forEach(fn => fn())
   }, [handleCreate, handleDelete, exportPdf, compile, activeNote])
@@ -212,7 +242,8 @@ export default function App() {
         lastSaved={lastSaved}
         syncMode={settings.syncMode}
         syncStatus={syncStatus}
-        onExportPdf={exportPdf}
+        hasActiveNote={!!activeNote}
+        onShare={(kind) => kind === 'pdf' ? exportPdf() : handleShareSource()}
         onSettings={() => setSettingsOpen(v => !v)}
         onOpenNotes={() => setSearchOpen(true)}
       />
@@ -241,6 +272,9 @@ export default function App() {
               onAddToDict={handleAddWord}
               notes={notes}
               onNavigate={handleNavigate}
+              noteId={activeNote.id}
+              onPickImage={handlePickImage}
+              onDropImage={handleDropImage}
             />
           ) : (
             <EmptyState onOpen={() => setSearchOpen(true)} isLoading={isLoading} />

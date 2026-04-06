@@ -60,11 +60,14 @@ interface Props {
   onAddToDict: (word: string) => void
   notes: NoteMeta[]
   onNavigate: (title: string) => void
+  noteId: string
+  onPickImage: () => Promise<string | null>
+  onDropImage: (srcPath: string) => Promise<string | null>
 }
 
 export function NoteEditor({
   value, onChange, tokenColors, fontSize, spellCheckEnabled, customDictionary, onAddToDict,
-  notes, onNavigate
+  notes, onNavigate, noteId, onPickImage, onDropImage
 }: Props) {
   useEffect(() => {
     monaco.editor.defineTheme('liquid-glass-light', buildMonacoTheme(tokenColors))
@@ -106,11 +109,28 @@ export function NoteEditor({
   notesRef.current   = notes
   const onNavigateRef = useRef(onNavigate)
   onNavigateRef.current = onNavigate
+  const noteIdRef = useRef(noteId)
+  noteIdRef.current = noteId
+  const onPickImageRef = useRef(onPickImage)
+  onPickImageRef.current = onPickImage
+  const onDropImageRef = useRef(onDropImage)
+  onDropImageRef.current = onDropImage
 
   const { popup: spellPopup, closePopup: closeSpellPopup, handleMouseDown: spellMouseDown, replaceWord } =
     useSpellCheck(editorRef, value, customDictionary, spellCheckEnabled)
   const spellMouseDownRef = useRef(spellMouseDown)
   spellMouseDownRef.current = spellMouseDown
+
+  const insertImageSnippet = useCallback((filename: string) => {
+    const ed = editorRef.current; if (!ed) return
+    const pos = ed.getPosition(); if (!pos) return
+    const nid = noteIdRef.current
+    const snippet = `#figure(\n  image("attachments/${nid}/${filename}", width: \${1:80%}),\n  caption: [\${2}],\n)\n`
+    const ctrl = ed.getContribution('snippetController2') as { insert?: (s: string) => void }
+    if (ctrl?.insert) ctrl.insert(snippet)
+    else ed.executeEdits('image-insert', [{ range: new monaco.Range(pos.lineNumber, pos.column, pos.lineNumber, pos.column), text: snippet.replace(/\$\{[0-9]+\}/g, '').replace(/\$[0-9]+/g, '') }])
+    ed.focus()
+  }, [])
 
   const doInsert = useCallback((cmd: SlashCommand) => {
     const ed = editorRef.current; const slash = slashPosRef.current
@@ -120,6 +140,18 @@ export function NoteEditor({
     setPalette(p => ({ ...p, open: false }))
     const { lineNumber: sl, column: sc } = slash
     const { lineNumber: el, column: ec } = pos
+
+    if (cmd.id === 'image') {
+      // Delete the slash trigger text, then open file picker
+      setTimeout(() => {
+        ed.setSelection(new monaco.Selection(sl, sc, el, ec))
+        ed.executeEdits('slash-image', [{ range: ed.getSelection()!, text: '' }])
+        onPickImageRef.current().then(filename => {
+          if (filename) insertImageSnippet(filename)
+        })
+      }, 0)
+      return
+    }
 
     if (cmd.id === 'tag') {
       // Delete the /tag text, then jump to (or create) the // @tags: line
@@ -170,11 +202,11 @@ export function NoteEditor({
 
         if (edits.length > 0) ed.executeEdits('slash-checklist', edits)
 
-        // Insert checkbox item at (now shifted) cursor position
+        // Insert a single checkbox item at cursor
         const newPos = ed.getPosition()!
         const ctrl = ed.getContribution('snippetController2') as any
-        if (ctrl?.insert) ctrl.insert('- [ ] ${1:item}\n- [ ] ${2:item}\n- [ ] $0')
-        else ed.executeEdits('slash-checklist', [{ range: new monaco.Range(newPos.lineNumber, newPos.column, newPos.lineNumber, newPos.column), text: '- [ ] item\n- [ ] item\n- [ ] item' }])
+        if (ctrl?.insert) ctrl.insert('- [ ] ${1:item}')
+        else ed.executeEdits('slash-checklist', [{ range: new monaco.Range(newPos.lineNumber, newPos.column, newPos.lineNumber, newPos.column), text: '- [ ] item' }])
         ed.focus()
       }, 0)
       return
@@ -301,6 +333,36 @@ export function NoteEditor({
     ed.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyB, () => wrapWithMarker('*'))
     ed.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyI, () => wrapWithMarker('_'))
 
+    // List / checkbox continuation on Enter
+    ed.addCommand(monaco.KeyCode.Enter, () => {
+      const model = ed.getModel(); const pos = ed.getPosition()
+      if (!model || !pos) { ed.trigger('keyboard', 'type', { text: '\n' }); return }
+
+      const line = model.getLineContent(pos.lineNumber)
+      const prefixes: [string, string][] = [
+        ['- [x] ', '- [ ] '],
+        ['- [ ] ', '- [ ] '],
+        ['- ',     '- '],
+        ['+ ',     '+ '],
+      ]
+      for (const [detect, cont] of prefixes) {
+        if (!line.startsWith(detect)) continue
+        const afterPrefix = line.slice(detect.length)
+        if (afterPrefix.trim() === '') {
+          // Empty item — remove prefix, plain newline
+          ed.executeEdits('list-continue', [{
+            range: new monaco.Range(pos.lineNumber, 1, pos.lineNumber, line.length + 1),
+            text: ''
+          }])
+          ed.trigger('keyboard', 'type', { text: '\n' })
+        } else {
+          ed.trigger('keyboard', 'type', { text: `\n${cont}` })
+        }
+        return
+      }
+      ed.trigger('keyboard', 'type', { text: '\n' })
+    })
+
     ed.onMouseDown((e) => {
       // Cmd/Ctrl+click on [[...]] navigates to that note
       if (e.event.metaKey || e.event.ctrlKey) {
@@ -383,6 +445,32 @@ export function NoteEditor({
   useEffect(() => {
     editorRef.current?.updateOptions({ fontSize })
   }, [fontSize])
+
+  // ── Image drag-and-drop ──────────────────────────────────────────────────────
+  useEffect(() => {
+    const el = containerRef.current; if (!el) return
+    const onDragOver = (e: DragEvent) => {
+      const hasImage = Array.from(e.dataTransfer?.items ?? []).some(i => i.type.startsWith('image/'))
+      if (hasImage) { e.preventDefault(); e.dataTransfer!.dropEffect = 'copy' }
+    }
+    const onDrop = (e: DragEvent) => {
+      const files = Array.from(e.dataTransfer?.files ?? [])
+      const imageFiles = files.filter(f => f.type.startsWith('image/'))
+      if (imageFiles.length === 0) return
+      e.preventDefault()
+      imageFiles.forEach(file => {
+        // Electron exposes the native path on the File object
+        const nativePath = (file as File & { path?: string }).path
+        if (!nativePath) return
+        onDropImageRef.current(nativePath).then(filename => {
+          if (filename) insertImageSnippet(filename)
+        })
+      })
+    }
+    el.addEventListener('dragover', onDragOver)
+    el.addEventListener('drop', onDrop)
+    return () => { el.removeEventListener('dragover', onDragOver); el.removeEventListener('drop', onDrop) }
+  }, [insertImageSnippet])
 
   return (
     <div ref={containerRef} style={{ flex: 1, overflow: 'hidden', minWidth: 0, position: 'relative' }}>
