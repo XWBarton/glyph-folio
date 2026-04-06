@@ -15,6 +15,27 @@ Personal Typst note-taking system. Write notes in Typst markup on your Mac or iP
 - **Local mode** — work entirely offline; notes are stored on device with no server required
 - **Separate stores** — local and server notes are kept in separate directories so switching modes never mixes them
 
+## Screenshots
+
+### Desktop
+
+| Editor | Explorer |
+|--------|----------|
+| ![Editor](images/editor_desktop.png) | ![Explorer](images/explorer_desktop.png) |
+
+| Link Graph | Tag Graph |
+|------------|-----------|
+| ![Link Graph](images/link_graph_desktop.png) | ![Tag Graph](images/tag_graph_desktop.png) |
+
+### iOS
+
+<p>
+  <img src="images/notes_ios.PNG" width="22%" alt="Notes list" />
+  <img src="images/editor_ios.PNG" width="22%" alt="Editor" />
+  <img src="images/explorer_ios.PNG" width="22%" alt="Explorer" />
+  <img src="images/graph_ios.PNG" width="22%" alt="Graph" />
+</p>
+
 ## Port
 
 The server listens on **port 3001** by default. Override with the `PORT` environment variable:
