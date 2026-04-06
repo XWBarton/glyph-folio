@@ -107,4 +107,20 @@ class ICloudSyncProvider: SyncProvider {
             "PDF export requires the sync server. Switch to Server mode in Settings."
         )
     }
+
+    // ── Attachments (not supported in iCloud mode) ───────────────────────────
+
+    func listAttachments(noteId: String) async throws -> [String] { return [] }
+
+    func uploadAttachment(noteId: String, filename: String, data: Data) async throws -> String {
+        throw SyncError.fileError("Attachments require server mode.")
+    }
+
+    func downloadAttachment(noteId: String, filename: String) async throws -> Data {
+        throw SyncError.fileError("Attachments require server mode.")
+    }
+
+    func deleteAttachment(noteId: String, filename: String) async throws {
+        throw SyncError.fileError("Attachments require server mode.")
+    }
 }
