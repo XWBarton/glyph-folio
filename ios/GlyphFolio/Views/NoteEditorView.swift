@@ -298,15 +298,29 @@ struct TypstEditor: UIViewRepresentable {
         wikiTap.delegate = context.coordinator
         tv.addGestureRecognizer(wikiTap)
 
+        // When the keyboard appears the view shrinks; UITextView needs a nudge to
+        // recalculate whether it can scroll with the new (smaller) frame.
+        NotificationCenter.default.addObserver(
+            context.coordinator,
+            selector: #selector(Coordinator.keyboardDidShow),
+            name: UIResponder.keyboardDidShowNotification,
+            object: nil
+        )
+
         return tv
     }
 
     func updateUIView(_ tv: UITextView, context: Context) {
         if tv.text != text {
             let range = tv.selectedRange
+            let offset = tv.contentOffset
             tv.attributedText = buildHighlightedText(text)
             let clamped = min(range.location, tv.text.utf16.count)
             tv.selectedRange = NSRange(location: clamped, length: 0)
+            // Restore scroll position and ensure UITextView knows it can scroll
+            tv.contentOffset = offset
+            tv.isScrollEnabled = false
+            tv.isScrollEnabled = true
         }
         // Keep toolbar callbacks up to date
         context.coordinator.toolbarHost?.rootView = FormatToolbar(controller: controller, onShowPalette: onShowPalette)
@@ -323,6 +337,26 @@ struct TypstEditor: UIViewRepresentable {
 
         // Continue list/checkbox prefixes on return; double-return (empty item) exits.
         func textView(_ tv: UITextView, shouldChangeTextIn range: NSRange, replacementText text: String) -> Bool {
+            // Auto-close bracket pairs
+            let pairs: [String: String] = ["[": "]", "(": ")", "{": "}"]
+            if let closing = pairs[text], range.length == 0 {
+                let mns = NSMutableString(string: tv.text ?? "")
+                mns.insert(text + closing, at: range.location)
+                tv.text = mns as String
+                tv.selectedRange = NSRange(location: range.location + 1, length: 0)
+                tv.delegate?.textViewDidChange?(tv)
+                return false
+            }
+            // Overtype: skip past auto-inserted closing bracket instead of inserting a duplicate
+            let closings: Set<String> = ["]", ")", "}"]
+            if closings.contains(text), range.length == 0 {
+                let ns = tv.text as NSString
+                if range.location < ns.length,
+                   ns.substring(with: NSRange(location: range.location, length: 1)) == text {
+                    tv.selectedRange = NSRange(location: range.location + 1, length: 0)
+                    return false
+                }
+            }
             guard text == "\n" else { return true }
             let ns = tv.text as NSString
             let cursor = range.location
@@ -406,10 +440,23 @@ struct TypstEditor: UIViewRepresentable {
         private func applyHighlight(_ tv: UITextView) {
             isHighlighting = true
             let cursor = tv.selectedRange
+            let offset = tv.contentOffset
             tv.attributedText = buildHighlightedText(tv.text)
             let len = tv.text.utf16.count
             tv.selectedRange = NSRange(location: min(cursor.location, len), length: cursor.length)
+            // Restore scroll position and ensure UITextView knows it can scroll
+            tv.contentOffset = offset
+            tv.isScrollEnabled = false
+            tv.isScrollEnabled = true
             isHighlighting = false
+        }
+
+        @objc func keyboardDidShow() {
+            guard let tv = parent.controller.textView else { return }
+            // Toggle isScrollEnabled to force UITextView to recalculate whether the
+            // content (now larger than the keyboard-shrunk frame) needs scrolling.
+            tv.isScrollEnabled = false
+            tv.isScrollEnabled = true
         }
 
         // Allow simultaneous recognition with UITextView's built-in gestures
@@ -434,6 +481,8 @@ struct TypstEditor: UIViewRepresentable {
             for match in regex.matches(in: text, range: NSRange(location: 0, length: nsText.length)) {
                 guard NSLocationInRange(charIndex, match.range), match.numberOfRanges > 1 else { continue }
                 let title = nsText.substring(with: match.range(at: 1))
+                // Dismiss keyboard immediately so it doesn't flash open during navigation
+                tv.resignFirstResponder()
                 parent.onWikiLinkTapped(title)
                 return
             }
@@ -473,6 +522,7 @@ private let allSlashCommands: [SlashCommand] = [
     .init(id: "wikilink",  category: "Link",      icon: "link.badge.plus",                         name: "Wiki Link",      description: "Link to another note",     syntax: "[[]]"),
     .init(id: "url",       category: "Link",      icon: "globe",                                   name: "URL Link",       description: "External hyperlink",       syntax: "#link(\"url\")[text]"),
     .init(id: "tags",      category: "Meta",      icon: "tag",                                     name: "Tags",           description: "Add tags to this note",    syntax: "// @tags: "),
+    .init(id: "datetime",  category: "Meta",      icon: "calendar.clock",                          name: "Date & Time",    description: "Insert current date and time",    syntax: ""),
     .init(id: "image",     category: "Media",     icon: "photo",                                   name: "Image",          description: "Insert image from photo library", syntax: ""),
 ]
 
@@ -545,7 +595,7 @@ struct FormatToolbar: View {
     let controller: EditorController
     let onShowPalette: () -> Void
 
-    private let quickChars = ["=", "*", "_", "-", "+", "["]
+    private let quickChars = ["=", "*", "_", "-", "+", "[", "(", "#"]
 
     var body: some View {
         HStack(spacing: 0) {
@@ -698,6 +748,7 @@ struct NoteEditorView: View {
     @State private var showImagePicker = false
     @State private var pickerItem: PhotosPickerItem? = nil
     @State private var isUploadingImage = false
+    @State private var imageUploadError: String? = nil
     @State private var tagSuggestions: [String] = []
 
     var body: some View {
@@ -742,7 +793,16 @@ struct NoteEditorView: View {
         .sheet(isPresented: $showCommandPalette) {
             SlashCommandPalette(isPresented: $showCommandPalette) { cmd in
                 if cmd.id == "image" {
-                    showImagePicker = true
+                    // Brief delay ensures the command palette sheet is fully dismissed
+                    // before presenting the photo picker, preventing presentation conflicts.
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+                        showImagePicker = true
+                    }
+                } else if cmd.id == "datetime" {
+                    let now = Date()
+                    let datePart = now.formatted(.dateTime.month(.wide).day().year())
+                    let timePart = now.formatted(.dateTime.hour().minute())
+                    controller.insert("\(datePart) · \(timePart)", replacingSlash: true)
                 } else if cmd.id == "checkbox" {
                     controller.insertChecklistItem(replacingSlash: true)
                 } else if cmd.id == "tags" {
@@ -766,13 +826,22 @@ struct NoteEditorView: View {
             guard let item else { return }
             Task { await handlePickedPhoto(item) }
         }
+        .alert("Image Upload Failed", isPresented: Binding(
+            get: { imageUploadError != nil },
+            set: { if !$0 { imageUploadError = nil } }
+        )) {
+            Button("OK", role: .cancel) { imageUploadError = nil }
+        } message: {
+            Text(imageUploadError ?? "")
+        }
         .onAppear { localBody = note.body }
         .onChange(of: note.id) { _, _ in localBody = note.body }
     }
 
     private func handlePickedPhoto(_ item: PhotosPickerItem) async {
         guard noteStore.syncMode == .server else {
-            controller.insert("\n// Image attachments require Server mode.\n")
+            imageUploadError = "Image attachments require Server mode. Switch to Server sync in Settings."
+            pickerItem = nil
             return
         }
         isUploadingImage = true
@@ -793,7 +862,7 @@ struct NoteEditorView: View {
             let snippet = "\n#figure(\n  image(\"attachments/\(note.id)/\(storedName)\"),\n  caption: [],\n)\n"
             controller.insert(snippet)
         } catch {
-            print("NoteEditorView: image upload failed:", error)
+            imageUploadError = "Upload failed: \(error.localizedDescription)"
         }
     }
 }

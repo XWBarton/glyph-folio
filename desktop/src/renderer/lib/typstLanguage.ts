@@ -11,6 +11,25 @@ export function registerTypstLanguage(monaco: typeof Monaco): void {
     aliases: ['Typst', 'typst']
   })
 
+  monaco.languages.setLanguageConfiguration(TYPST_LANGUAGE_ID, {
+    brackets: [
+      ['[', ']'],
+      ['(', ')'],
+      ['{', '}'],
+    ],
+    autoClosingPairs: [
+      { open: '[', close: ']' },
+      { open: '(', close: ')' },
+      { open: '{', close: '}' },
+    ],
+    surroundingPairs: [
+      { open: '[', close: ']' },
+      { open: '(', close: ')' },
+      { open: '{', close: '}' },
+      { open: '"', close: '"' },
+    ],
+  })
+
   monaco.languages.setMonarchTokensProvider(TYPST_LANGUAGE_ID, {
     defaultToken: '',
     tokenPostfix: '.typst',

@@ -63,7 +63,7 @@ final class GraphSimulation: ObservableObject {
                             x: cx + r * cos(angle), y: cy + r * sin(angle))
             }
             let allTags = Array(Set(notes.flatMap(\.tags))).sorted()
-            let tr = r * 0.45
+            let tr = r * 0.30
             let tagNodes: [Node] = allTags.enumerated().map { i, tag in
                 let angle = 2 * .pi * Double(i) / Double(max(1, allTags.count))
                 return Node(id: "tag:\(tag)", title: tag, type: .tag,
@@ -114,17 +114,21 @@ final class GraphSimulation: ObservableObject {
     private func step(size: CGSize) {
         guard nodes.count > 1 else { return }
 
-        let repulsion = 4_000.0
+        let repulsion  = 10_000.0
         let springK    = 0.06
         let springLen  = 160.0
+        let tagSpringLen = 90.0   // shorter target distance for note→tag edges
         let gravity    = 0.04
+        let tagGravity = 0.10     // stronger pull toward center for tag nodes
         let damping    = 0.85
+        let minSep     = 28.0     // minimum centre-to-centre distance before collision force kicks in
         let cx = size.width / 2, cy = size.height / 2
+        let perimeter  = min(size.width, size.height) * 0.33  // target radius for note nodes in tags lens
 
         var fx = [Double](repeating: 0, count: nodes.count)
         var fy = [Double](repeating: 0, count: nodes.count)
 
-        // Repulsion (all pairs)
+        // Repulsion (all pairs) + collision separation
         for i in nodes.indices {
             for j in (i + 1) ..< nodes.count {
                 let dx = nodes[i].x - nodes[j].x
@@ -134,6 +138,15 @@ final class GraphSimulation: ObservableObject {
                 let f  = repulsion / d2
                 fx[i] += f * dx / d;  fy[i] += f * dy / d
                 fx[j] -= f * dx / d;  fy[j] -= f * dy / d
+
+                // Extra push when nodes are too close
+                if d < minSep {
+                    let overlap = (minSep - d) * 0.5
+                    let nx = dx / d
+                    let ny = dy / d
+                    fx[i] += nx * overlap * 1.5;  fy[i] += ny * overlap * 1.5
+                    fx[j] -= nx * overlap * 1.5;  fy[j] -= ny * overlap * 1.5
+                }
             }
         }
 
@@ -144,16 +157,58 @@ final class GraphSimulation: ObservableObject {
             let dx = nodes[j].x - nodes[i].x
             let dy = nodes[j].y - nodes[i].y
             let d  = max(sqrt(dx * dx + dy * dy), 0.001)
-            let stretch = d - springLen
+            let isTagEdge = nodes[i].type == .tag || nodes[j].type == .tag
+            let len = isTagEdge ? tagSpringLen : springLen
+            let stretch = d - len
             let f = springK * stretch
             fx[i] += f * dx / d;  fy[i] += f * dy / d
             fx[j] -= f * dx / d;  fy[j] -= f * dy / d
         }
 
-        // Gravity toward canvas center
+        // Cluster attraction: notes that share a tag pull toward each other
+        // so each tag's note-cluster stays physically grouped, minimising edge crossings
+        let clusterK = 0.015
+        let clusterLen = 120.0
+        for i in nodes.indices where nodes[i].type == .note {
+            for j in (i + 1) ..< nodes.count where nodes[j].type == .note {
+                // Check if these two notes share any tag edge (both connect to the same tag node)
+                let tagsI = edges.compactMap { (a, b) -> String? in
+                    if a == nodes[i].id, b.hasPrefix("tag:") { return b }
+                    if b == nodes[i].id, a.hasPrefix("tag:") { return a }
+                    return nil
+                }
+                let tagsJ = Set(edges.compactMap { (a, b) -> String? in
+                    if a == nodes[j].id, b.hasPrefix("tag:") { return b }
+                    if b == nodes[j].id, a.hasPrefix("tag:") { return a }
+                    return nil
+                })
+                guard tagsI.contains(where: { tagsJ.contains($0) }) else { continue }
+                let dx = nodes[j].x - nodes[i].x
+                let dy = nodes[j].y - nodes[i].y
+                let d  = max(sqrt(dx * dx + dy * dy), 0.001)
+                let stretch = d - clusterLen
+                let f = clusterK * stretch
+                fx[i] += f * dx / d;  fy[i] += f * dy / d
+                fx[j] -= f * dx / d;  fy[j] -= f * dy / d
+            }
+        }
+
+        // Type-aware gravity: tags pulled strongly to center, notes pushed toward perimeter
         for i in nodes.indices {
-            fx[i] += gravity * (cx - nodes[i].x)
-            fy[i] += gravity * (cy - nodes[i].y)
+            if nodes[i].type == .tag {
+                fx[i] += tagGravity * (cx - nodes[i].x)
+                fy[i] += tagGravity * (cy - nodes[i].y)
+            } else {
+                // Soft radial push: nudge note nodes toward the perimeter ring
+                let dx = nodes[i].x - cx
+                let dy = nodes[i].y - cy
+                let dist = max(sqrt(dx * dx + dy * dy), 0.001)
+                let radialForce = gravity * (perimeter - dist) / perimeter
+                fx[i] += gravity * (cx - nodes[i].x)
+                fy[i] += gravity * (cy - nodes[i].y)
+                fx[i] -= radialForce * dx / dist
+                fy[i] -= radialForce * dy / dist
+            }
         }
 
         // Integrate
@@ -193,19 +248,27 @@ struct GraphView: View {
                     ctx.translateBy(x: offset.width, y: offset.height)
                     ctx.scaleBy(x: scale, y: scale)
 
-                    // Edges
+                    // Edges — color-matched to tag, curved so parallel edges don't stack
                     for (aId, bId) in sim.edges {
                         guard let n1 = sim.nodes.first(where: { $0.id == aId }),
                               let n2 = sim.nodes.first(where: { $0.id == bId }) else { continue }
+                        let tagNode = [n1, n2].first(where: { $0.type == .tag })
+                        let edgeColor: Color = {
+                            guard let t = tagNode else { return .secondary.opacity(0.25) }
+                            if let hex = settings.tagColors[t.title] { return Color(hex: hex).opacity(0.35) }
+                            return tagHashColor(t.title).opacity(0.35)
+                        }()
                         var p = Path()
                         p.move(to: CGPoint(x: n1.x, y: n1.y))
                         p.addLine(to: CGPoint(x: n2.x, y: n2.y))
-                        ctx.stroke(p, with: .color(.secondary.opacity(0.35)), lineWidth: 1.5)
+                        ctx.stroke(p, with: .color(edgeColor), lineWidth: 1)
                     }
 
-                    // Nodes
-                    for node in sim.nodes {
+                    // Nodes — draw notes first, then tags on top so tags are always visible
+                    for pass in [false, true] {
+                      for node in sim.nodes {
                         let isTag = node.type == .tag
+                        guard isTag == pass else { continue }
                         let noteForNode = isTag ? nil : notes.first(where: { $0.id == node.id })
                         let nodeColor: Color = {
                             if isTag {
@@ -218,15 +281,14 @@ struct GraphView: View {
                         }()
                         let r: Double = isTag ? 6 : 7
                         if isTag {
-                            // Diamond for tag nodes
                             var diamond = Path()
                             diamond.move(to:    CGPoint(x: node.x,     y: node.y - r))
                             diamond.addLine(to: CGPoint(x: node.x + r, y: node.y))
                             diamond.addLine(to: CGPoint(x: node.x,     y: node.y + r))
                             diamond.addLine(to: CGPoint(x: node.x - r, y: node.y))
                             diamond.closeSubpath()
-                            ctx.fill(diamond, with: .color(nodeColor.opacity(0.18)))
-                            ctx.stroke(diamond, with: .color(nodeColor), style: StrokeStyle(lineWidth: 1.5))
+                            ctx.fill(diamond, with: .color(nodeColor.opacity(0.22)))
+                            ctx.stroke(diamond, with: .color(nodeColor), style: StrokeStyle(lineWidth: 2))
                         } else {
                             let circle = CGRect(x: node.x - r, y: node.y - r, width: r * 2, height: r * 2)
                             ctx.fill(Circle().path(in: circle), with: .color(nodeColor.opacity(0.18)))
@@ -235,12 +297,13 @@ struct GraphView: View {
                         let truncated = node.title.count > 18
                             ? String(node.title.prefix(16)) + "…"
                             : node.title
-                        let fontSize: CGFloat = isTag ? 9 : 10
+                        // Tag labels: colored, bold, larger — clearly a category header
+                        let fontSize: CGFloat = isTag ? 11 : 10
                         let label = Text(truncated)
-                            .font(.system(size: fontSize, weight: isTag ? .regular : .medium))
-                            .foregroundStyle(isTag ? Color.secondary : Color.primary)
-                        let labelPt = CGPoint(x: node.x, y: node.y + (isTag ? 14 : 18))
-                        let textSize = CGSize(width: CGFloat(truncated.count) * 5.5 + 8, height: 14)
+                            .font(.system(size: fontSize, weight: isTag ? .semibold : .medium))
+                            .foregroundStyle(isTag ? nodeColor : Color.primary)
+                        let labelPt = CGPoint(x: node.x, y: node.y + (isTag ? r + 9 : 18))
+                        let textSize = CGSize(width: CGFloat(truncated.count) * (isTag ? 6.5 : 5.5) + 8, height: 14)
                         let bgRect = CGRect(
                             x: labelPt.x - textSize.width / 2,
                             y: labelPt.y - 7,
@@ -249,9 +312,10 @@ struct GraphView: View {
                         )
                         ctx.fill(
                             RoundedRectangle(cornerRadius: 3).path(in: bgRect),
-                            with: .color(.white.opacity(0.75))
+                            with: .color(.white.opacity(0.82))
                         )
                         ctx.draw(label, at: labelPt)
+                      }
                     }
                 }
                 // Tap: hit-test in screen space accounting for transform

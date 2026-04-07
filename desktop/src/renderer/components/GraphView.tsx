@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react'
+import { createPortal } from 'react-dom'
 import type { NoteMeta } from '../hooks/useNotes'
 
 interface Props {
@@ -444,7 +445,7 @@ export function GraphView({ notes, lens, activeNoteId, onSelect }: Props) {
     if (!node) return
     const tag = node.type === 'tag' ? node.label : node.tags[0]
     if (!tag) return
-    const MENU_W = 192, MENU_H = 160
+    const MENU_W = 192, MENU_H = 220
     const mx = Math.max(8, Math.min(e.clientX, window.innerWidth  - MENU_W))
     const my = Math.max(8, Math.min(e.clientY, window.innerHeight - MENU_H))
     setContextMenu({ x: mx, y: my, tag })
@@ -511,7 +512,7 @@ export function GraphView({ notes, lens, activeNoteId, onSelect }: Props) {
           No notes to graph yet
         </div>
       )}
-      {contextMenu && (
+      {contextMenu && createPortal(
         <div
           onMouseDown={e => e.stopPropagation()}
           style={{
@@ -572,7 +573,8 @@ export function GraphView({ notes, lens, activeNoteId, onSelect }: Props) {
               Reset to default
             </button>
           )}
-        </div>
+        </div>,
+        document.body
       )}
 
       {hoveredId && !hoveredId.startsWith('tag:') && (() => {

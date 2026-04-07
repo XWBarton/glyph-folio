@@ -38,6 +38,9 @@ export const SLASH_COMMANDS: SlashCommand[] = [
   // Tags
   { id: 'tag', label: 'Add tags', description: 'Edit note tags', icon: '#', category: 'advanced', snippet: '', keywords: ['tag', 'tags', 'label'] },
 
+  // Date / time
+  { id: 'datetime', label: 'Date & Time', description: 'Insert current date and time', icon: '📅', category: 'advanced', snippet: '', keywords: ['date', 'time', 'now', 'today', 'datetime', 'timestamp'] },
+
   // Checklist
   { id: 'checklist', label: 'Checklist', description: 'Interactive checkbox list (auto-imports cheq)', icon: '✓', category: 'structure', snippet: '- [ ] ${1:item}\n- [ ] ${2:item}\n- [ ] $0', keywords: ['checklist', 'check', 'todo', 'task', 'checkbox'] },
 

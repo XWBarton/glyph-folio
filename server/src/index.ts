@@ -100,10 +100,10 @@ app.delete('/api/notes/:id/attachments/:filename', (req, res) => {
 // ── Compile ───────────────────────────────────────────────────────────────────
 
 app.post('/api/compile', async (req, res) => {
-  const { content } = req.body as { content?: string }
+  const { content, noteId } = req.body as { content?: string; noteId?: string }
   if (typeof content !== 'string') { res.status(400).json({ error: 'content required' }); return }
 
-  const result = await compileTypst(content)
+  const result = await compileTypst(content, noteId)
   res.json(result)
 })
 

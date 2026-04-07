@@ -12,6 +12,29 @@ import {
 import { getStore } from './store'
 import { net } from 'electron'
 
+/** Upload an attachment to the sync server (fire-and-forget; only runs in server mode). */
+async function uploadAttachmentToServer(noteId: string, filename: string, buf: Buffer): Promise<void> {
+  const store = getStore()
+  if (store.get('syncMode') !== 'server') return
+  const serverUrl = store.get('serverUrl').replace(/\/$/, '')
+  if (!serverUrl) return
+  const authToken = store.get('authToken')
+
+  const url = `${serverUrl}/api/notes/${encodeURIComponent(noteId)}/attachments`
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+  if (authToken) headers['Authorization'] = `Bearer ${authToken}`
+
+  try {
+    await net.fetch(url, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ filename, dataBase64: buf.toString('base64') }),
+    })
+  } catch (e) {
+    console.error('Failed to upload attachment to server:', e)
+  }
+}
+
 export function registerIpcHandlers(): void {
   ipcMain.handle('notes:list', async () => {
     return listNotes()
@@ -155,12 +178,23 @@ export function registerIpcHandlers(): void {
   })
 
   ipcMain.handle('attachments:pick-and-save', async (_event, noteId: string) => {
-    return pickAndSaveAttachment(noteId)
+    const result = await pickAndSaveAttachment(noteId)
+    if (result) {
+      const buf = readAttachmentBuffer(noteId, result.filename)
+      if (buf) uploadAttachmentToServer(noteId, result.filename, buf)
+    }
+    return result
   })
 
   ipcMain.handle('attachments:save-file', async (_event, noteId: string, srcPath: string) => {
-    try { return saveFileAsAttachment(noteId, srcPath) }
-    catch (e) { return { error: String(e) } }
+    try {
+      const result = saveFileAsAttachment(noteId, srcPath)
+      const buf = readAttachmentBuffer(noteId, result.filename)
+      if (buf) uploadAttachmentToServer(noteId, result.filename, buf)
+      return result
+    } catch (e) {
+      return { error: String(e) }
+    }
   })
 
   ipcMain.handle('attachments:read', async (_event, noteId: string, filename: string) => {

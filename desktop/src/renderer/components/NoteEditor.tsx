@@ -153,6 +153,18 @@ export function NoteEditor({
       return
     }
 
+    if (cmd.id === 'datetime') {
+      setTimeout(() => {
+        ed.setSelection(new monaco.Selection(sl, sc, el, ec))
+        const now = new Date()
+        const dateStr = now.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
+        const timeStr = now.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })
+        ed.executeEdits('datetime-insert', [{ range: ed.getSelection()!, text: `${dateStr} · ${timeStr}` }])
+        ed.focus()
+      }, 0)
+      return
+    }
+
     if (cmd.id === 'tag') {
       // Delete the /tag text, then jump to (or create) the // @tags: line
       setTimeout(() => {
@@ -528,6 +540,8 @@ export function NoteEditor({
           lineNumbersMinChars: 3,
           overviewRulerLanes: 0,
           stickyScroll: { enabled: false },
+          autoClosingBrackets: 'always',
+          autoClosingQuotes: 'never',
           quickSuggestions: false,
           suggestOnTriggerCharacters: false,
           wordBasedSuggestions: 'off',
