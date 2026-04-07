@@ -47,6 +47,7 @@ export interface FolioAPI {
   notesExportPdf(pdfBytes: number[], suggestedName: string): Promise<{ success: boolean; error?: string }>
   notesDir(): Promise<string>
   notesSearch(query: string): Promise<SearchResult[]>
+  notesRenameLinks(oldTitle: string, newTitle: string, excludeFilePath: string): Promise<string[]>
   typstCompileNote(body: string): Promise<{ pdfBytes: number[] } | { error: string }>
   attachmentsList(noteId: string): Promise<string[]>
   attachmentsPickAndSave(noteId: string): Promise<{ filename: string } | null>
@@ -83,6 +84,7 @@ const api: FolioAPI = {
   notesExportPdf: (pdfBytes, name) => ipcRenderer.invoke('notes:export-pdf', pdfBytes, name),
   notesDir: () => ipcRenderer.invoke('notes:dir'),
   notesSearch: (query) => ipcRenderer.invoke('notes:search', query),
+  notesRenameLinks: (oldTitle, newTitle, excludeFilePath) => ipcRenderer.invoke('notes:rename-links', oldTitle, newTitle, excludeFilePath),
   typstCompileNote: (body) => ipcRenderer.invoke('typst:compile-note', body),
   attachmentsList: (noteId) => ipcRenderer.invoke('attachments:list', noteId),
   attachmentsPickAndSave: (noteId) => ipcRenderer.invoke('attachments:pick-and-save', noteId),

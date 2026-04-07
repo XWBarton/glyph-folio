@@ -156,9 +156,6 @@ function SyncModePill({ mode, status }: { mode: string; status: string }) {
       userSelect: 'none',
       transition: 'background 0.3s, border-color 0.3s, color 0.3s',
     }}>
-      <span style={{ fontSize: 8 }}>
-        {mode === 'icloud' ? '☁' : mode === 'server' ? '⟳' : '◎'}
-      </span>
       <span>{modeLabel}{extra ? ` · ${extra}` : ''}</span>
     </div>
   )
@@ -286,13 +283,13 @@ function ShareDropdown({ onShare, hasPdf, hasActiveNote }: {
           WebkitAppRegion: 'no-drag' as React.CSSProperties['WebkitAppRegion'],
         }}>
           <DropdownItem
-            label="Export PDF"
+            label="PDF"
             disabled={!hasPdf}
             style={itemStyle}
             onClick={() => { setOpen(false); onShare('pdf') }}
           />
           <DropdownItem
-            label="Share Source…"
+            label="Source"
             disabled={false}
             style={itemStyle}
             onClick={() => { setOpen(false); onShare('source') }}

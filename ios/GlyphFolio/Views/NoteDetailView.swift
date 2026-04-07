@@ -80,6 +80,7 @@ struct NoteDetailView: View {
     }
 
     private func requestPreview() async {
+        await noteStore.flushPendingSave()
         isBusy = true
         defer { isBusy = false }
         do {

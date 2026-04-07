@@ -16,6 +16,7 @@ class NoteStore: ObservableObject {
     private var provider: SyncProvider { makeProvider() }
     private var autoSaveTask: Task<Void, Never>?
     private var pendingBody: String?
+    private var lastSavedTitles: [String: String] = [:]
 
     private func makeProvider() -> SyncProvider {
         switch AppSettings.shared.syncMode {
@@ -33,6 +34,8 @@ class NoteStore: ObservableObject {
         do {
             notes = try await provider.listNotes()
             if syncMode == .server { syncStatus = .synced }
+            // Seed lastSavedTitles so the first save after load won't trigger spurious renames
+            for note in notes { lastSavedTitles[note.id] = note.title }
         } catch {
             print("NoteStore.load error:", error)
             if syncMode == .server { syncStatus = .offline }
@@ -147,9 +150,15 @@ class NoteStore: ObservableObject {
     private func save(_ note: Note) async {
         guard var n = activeNote, n.id == note.id else { return }
         if let pending = pendingBody { n.body = pending; pendingBody = nil }
+        let oldTitle = lastSavedTitles[n.id]
         do {
             try await provider.writeNote(n)
             if syncMode == .server { syncStatus = .synced }
+            // Rename [[Old Title]] → [[New Title]] in all other notes if title changed
+            if let old = oldTitle, old != n.title, !old.isEmpty, !n.title.isEmpty {
+                await renameWikiLinks(from: old, to: n.title, excludingId: n.id)
+            }
+            lastSavedTitles[n.id] = n.title
         } catch {
             if syncMode == .server { syncStatus = .offline }
         }
@@ -157,6 +166,23 @@ class NoteStore: ObservableObject {
         if let idx = notes.firstIndex(where: { $0.id == n.id }) {
             notes[idx] = n
             notes.sort { $0.modifiedAt > $1.modifiedAt }
+        }
+    }
+
+    private func renameWikiLinks(from oldTitle: String, to newTitle: String, excludingId: String) async {
+        let needle = "[[\(oldTitle)]]"
+        let replacement = "[[\(newTitle)]]"
+        let candidates = notes.filter { $0.id != excludingId && $0.body.contains(needle) }
+        guard !candidates.isEmpty else { return }
+        let p = provider
+        for var candidate in candidates {
+            let newBody = candidate.body.replacingOccurrences(of: needle, with: replacement)
+            candidate.body = newBody
+            candidate.title = Note.extractTitle(from: newBody, id: candidate.id)
+            try? await p.writeNote(candidate)
+            if let idx = notes.firstIndex(where: { $0.id == candidate.id }) {
+                notes[idx] = candidate
+            }
         }
     }
 

@@ -316,6 +316,30 @@ export function searchNotes(query: string): SearchResult[] {
   return results.sort((a, b) => new Date(b.modifiedAt).getTime() - new Date(a.modifiedAt).getTime())
 }
 
+function escapeRegex(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
+export function renameWikiLinks(oldTitle: string, newTitle: string, excludeFilePath: string): string[] {
+  if (!oldTitle || !newTitle || oldTitle === newTitle) return []
+  const dir = resolveNotesDir()
+  const files = readdirSync(dir).filter(f => extname(f) === '.typ' && !f.startsWith('.'))
+  const needle = `[[${oldTitle}]]`
+  const pattern = new RegExp(`\\[\\[${escapeRegex(oldTitle)}\\]\\]`, 'g')
+  const modified: string[] = []
+  for (const f of files) {
+    const filePath = join(dir, f)
+    if (filePath === excludeFilePath) continue
+    let body = ''
+    try { body = readFileSync(filePath, 'utf8') } catch { continue }
+    if (!body.includes(needle)) continue
+    const newBody = body.replace(pattern, `[[${newTitle}]]`)
+    try { writeFileSync(filePath, newBody, 'utf8') } catch { continue }
+    modified.push(filePath)
+  }
+  return modified
+}
+
 export async function exportNotePdf(
   pdfBytes: number[],
   suggestedName: string

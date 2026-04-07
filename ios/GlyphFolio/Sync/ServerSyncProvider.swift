@@ -176,7 +176,7 @@ actor ServerSyncProvider: SyncProvider {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = try JSONEncoder().encode(["content": content, "noteId": note.id])
 
-        let (data, _) = try await URLSession.shared.data(for: authorized(request))
+        let (data, _) = try await URLSession.shared.data(for: authorized(request, timeout: 30))
         struct CompileResponse: Decodable {
             let ok: Bool
             let pdfBase64: String?

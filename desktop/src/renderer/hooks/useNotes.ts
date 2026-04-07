@@ -72,8 +72,14 @@ export function useNotes() {
       const active = stateRef.current.activeNote
       if (!active || !dirtyRef.current) return
       dirtyRef.current = false
+      // Capture old title (from notes list, which still has the pre-edit title)
+      const oldTitle = stateRef.current.notes.find(n => n.filePath === active.filePath)?.title
       await window.api.notesWrite(active.filePath, active.body)
-      // Refresh list so modifiedAt updates
+      // If title changed, rename [[Old Title]] → [[New Title]] in all other notes
+      if (oldTitle && active.title && oldTitle !== active.title) {
+        await window.api.notesRenameLinks(oldTitle, active.title, active.filePath)
+      }
+      // Refresh list so modifiedAt + title updates propagate
       const notes = await window.api.notesList()
       setState(s => ({ ...s, notes }))
     }, AUTO_SAVE_DELAY)
@@ -99,10 +105,12 @@ export function useNotes() {
 
   const updateBody = useCallback((body: string) => {
     dirtyRef.current = true
-    setState(s => ({
-      ...s,
-      activeNote: s.activeNote ? { ...s.activeNote, body } : null
-    }))
+    setState(s => {
+      if (!s.activeNote) return s
+      const m = body.match(/^={1,6}\s+(.+)$/m)
+      const title = m ? m[1].trim() : s.activeNote.title
+      return { ...s, activeNote: { ...s.activeNote, body, title } }
+    })
     scheduleAutoSave()
   }, [scheduleAutoSave])
 

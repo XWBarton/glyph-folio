@@ -7,7 +7,7 @@ import { compileNote } from './compiler'
 import {
   listNotes, readNote, writeNote, upsertNote, deleteNote, createNote, exportNotePdf, resolveNotesDir, searchNotes,
   listAttachments, readAttachmentBuffer, writeAttachmentBuffer, deleteAttachmentFile,
-  pickAndSaveAttachment, saveFileAsAttachment
+  pickAndSaveAttachment, saveFileAsAttachment, renameWikiLinks
 } from './notesManager'
 import { getStore } from './store'
 import { net } from 'electron'
@@ -50,6 +50,10 @@ export function registerIpcHandlers(): void {
 
   ipcMain.handle('notes:search', async (_event, query: string) => {
     return searchNotes(query)
+  })
+
+  ipcMain.handle('notes:rename-links', (_event, oldTitle: string, newTitle: string, excludeFilePath: string) => {
+    return renameWikiLinks(oldTitle, newTitle, excludeFilePath)
   })
 
   ipcMain.handle('typst:compile-note', async (_event, body: string) => {

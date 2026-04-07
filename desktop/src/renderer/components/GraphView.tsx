@@ -444,7 +444,10 @@ export function GraphView({ notes, lens, activeNoteId, onSelect }: Props) {
     if (!node) return
     const tag = node.type === 'tag' ? node.label : node.tags[0]
     if (!tag) return
-    setContextMenu({ x: e.clientX, y: e.clientY, tag })
+    const MENU_W = 192, MENU_H = 160
+    const mx = Math.max(8, Math.min(e.clientX, window.innerWidth  - MENU_W))
+    const my = Math.max(8, Math.min(e.clientY, window.innerHeight - MENU_H))
+    setContextMenu({ x: mx, y: my, tag })
   }, [hitTest])
 
   // Close context menu on any outside click

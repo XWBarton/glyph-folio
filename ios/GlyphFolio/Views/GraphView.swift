@@ -9,9 +9,12 @@ enum GraphLens { case links, tags }
 
 @MainActor
 final class GraphSimulation: ObservableObject {
+    enum NodeType { case note, tag }
+
     struct Node {
         let id: String
         let title: String
+        var type: NodeType = .note
         var x: Double
         var y: Double
         var vx: Double = 0
@@ -22,42 +25,56 @@ final class GraphSimulation: ObservableObject {
     @Published var edges: [(String, String)] = []   // pairs of note IDs
 
     private var cancellable: AnyCancellable?
+    private var draggedNodeId: String? = nil
 
     func reset(notes: [Note], lens: GraphLens, size: CGSize) {
         let n = notes.count
         guard n > 0 else { nodes = []; edges = []; return }
 
-        // Place nodes in a circle initially
         let r = min(size.width, size.height) * 0.33
         let cx = size.width / 2, cy = size.height / 2
-        nodes = notes.enumerated().map { i, note in
-            let angle = 2 * .pi * Double(i) / Double(n)
-            return Node(id: note.id, title: note.title,
-                        x: cx + r * cos(angle), y: cy + r * sin(angle))
-        }
 
         var seen = Set<String>()
         var result: [(String, String)] = []
 
         switch lens {
         case .links:
+            nodes = notes.enumerated().map { i, note in
+                let angle = 2 * .pi * Double(i) / Double(n)
+                return Node(id: note.id, title: note.title, type: .note,
+                            x: cx + r * cos(angle), y: cy + r * sin(angle))
+            }
             for note in notes {
                 for link in note.links {
                     let linkLower = link.lowercased()
-                    guard let target = notes.first(where: { n in
-                        n.title.lowercased() == linkLower || n.id == link
+                    guard let target = notes.first(where: { t in
+                        t.title.lowercased() == linkLower || t.id == link
                     }) else { continue }
                     let key = ([note.id, target.id].sorted()).joined(separator: "|")
                     if seen.insert(key).inserted { result.append((note.id, target.id)) }
                 }
             }
+
         case .tags:
-            for i in notes.indices {
-                for j in (i + 1) ..< notes.count {
-                    let shared = Set(notes[i].tags).intersection(notes[j].tags)
-                    guard !shared.isEmpty else { continue }
-                    let key = ([notes[i].id, notes[j].id].sorted()).joined(separator: "|")
-                    if seen.insert(key).inserted { result.append((notes[i].id, notes[j].id)) }
+            // Bipartite: note nodes (outer ring) + tag nodes (inner ring)
+            let noteNodes: [Node] = notes.enumerated().map { i, note in
+                let angle = 2 * .pi * Double(i) / Double(n)
+                return Node(id: note.id, title: note.title, type: .note,
+                            x: cx + r * cos(angle), y: cy + r * sin(angle))
+            }
+            let allTags = Array(Set(notes.flatMap(\.tags))).sorted()
+            let tr = r * 0.45
+            let tagNodes: [Node] = allTags.enumerated().map { i, tag in
+                let angle = 2 * .pi * Double(i) / Double(max(1, allTags.count))
+                return Node(id: "tag:\(tag)", title: tag, type: .tag,
+                            x: cx + tr * cos(angle), y: cy + tr * sin(angle))
+            }
+            nodes = noteNodes + tagNodes
+
+            for note in notes {
+                for tag in note.tags {
+                    let key = "\(note.id)|tag:\(tag)"
+                    if seen.insert(key).inserted { result.append((note.id, "tag:\(tag)")) }
                 }
             }
         }
@@ -72,6 +89,27 @@ final class GraphSimulation: ObservableObject {
     }
 
     func stop() { cancellable = nil }
+
+    func startDrag(nodeId: String) {
+        draggedNodeId = nodeId
+        if let i = nodes.firstIndex(where: { $0.id == nodeId }) {
+            nodes[i].vx = 0
+            nodes[i].vy = 0
+        }
+    }
+
+    func moveDrag(nodeId: String, x: Double, y: Double) {
+        guard draggedNodeId == nodeId,
+              let i = nodes.firstIndex(where: { $0.id == nodeId }) else { return }
+        nodes[i].x = x
+        nodes[i].y = y
+        nodes[i].vx = 0
+        nodes[i].vy = 0
+    }
+
+    func endDrag() {
+        draggedNodeId = nil
+    }
 
     private func step(size: CGSize) {
         guard nodes.count > 1 else { return }
@@ -121,6 +159,7 @@ final class GraphSimulation: ObservableObject {
         // Integrate
         let pad = 50.0
         for i in nodes.indices {
+            guard nodes[i].id != draggedNodeId else { continue }
             nodes[i].vx = (nodes[i].vx + fx[i]) * damping
             nodes[i].vy = (nodes[i].vy + fy[i]) * damping
             nodes[i].x  = min(max(nodes[i].x + nodes[i].vx, pad), size.width  - pad)
@@ -145,6 +184,7 @@ struct GraphView: View {
     @State private var lastOffset: CGSize = .zero
     @State private var scale: CGFloat = 1.0
     @State private var lastScale: CGFloat = 1.0
+    @State private var draggingNodeId: String? = nil
 
     var body: some View {
         GeometryReader { geo in
@@ -165,23 +205,41 @@ struct GraphView: View {
 
                     // Nodes
                     for node in sim.nodes {
-                        let noteForNode = notes.first(where: { $0.id == node.id })
+                        let isTag = node.type == .tag
+                        let noteForNode = isTag ? nil : notes.first(where: { $0.id == node.id })
                         let nodeColor: Color = {
+                            if isTag {
+                                if let hex = settings.tagColors[node.title] { return Color(hex: hex) }
+                                return tagHashColor(node.title)
+                            }
                             guard let tag = noteForNode?.tags.first else { return .glyphAccent }
                             if let hex = settings.tagColors[tag] { return Color(hex: hex) }
                             return tagHashColor(tag)
                         }()
-                        let circle = CGRect(x: node.x - 7, y: node.y - 7, width: 14, height: 14)
-                        ctx.fill(Circle().path(in: circle), with: .color(nodeColor.opacity(0.18)))
-                        ctx.stroke(Circle().path(in: circle), with: .color(nodeColor), lineWidth: 1.5)
+                        let r: Double = isTag ? 6 : 7
+                        if isTag {
+                            // Diamond for tag nodes
+                            var diamond = Path()
+                            diamond.move(to:    CGPoint(x: node.x,     y: node.y - r))
+                            diamond.addLine(to: CGPoint(x: node.x + r, y: node.y))
+                            diamond.addLine(to: CGPoint(x: node.x,     y: node.y + r))
+                            diamond.addLine(to: CGPoint(x: node.x - r, y: node.y))
+                            diamond.closeSubpath()
+                            ctx.fill(diamond, with: .color(nodeColor.opacity(0.18)))
+                            ctx.stroke(diamond, with: .color(nodeColor), style: StrokeStyle(lineWidth: 1.5))
+                        } else {
+                            let circle = CGRect(x: node.x - r, y: node.y - r, width: r * 2, height: r * 2)
+                            ctx.fill(Circle().path(in: circle), with: .color(nodeColor.opacity(0.18)))
+                            ctx.stroke(Circle().path(in: circle), with: .color(nodeColor), lineWidth: 1.5)
+                        }
                         let truncated = node.title.count > 18
                             ? String(node.title.prefix(16)) + "…"
                             : node.title
+                        let fontSize: CGFloat = isTag ? 9 : 10
                         let label = Text(truncated)
-                            .font(.system(size: 10, weight: .medium))
-                            .foregroundStyle(.primary)
-                        let labelPt = CGPoint(x: node.x, y: node.y + 18)
-                        // Background pill so label doesn't bleed into nearby nodes/edges
+                            .font(.system(size: fontSize, weight: isTag ? .regular : .medium))
+                            .foregroundStyle(isTag ? Color.secondary : Color.primary)
+                        let labelPt = CGPoint(x: node.x, y: node.y + (isTag ? 14 : 18))
                         let textSize = CGSize(width: CGFloat(truncated.count) * 5.5 + 8, height: 14)
                         let bgRect = CGRect(
                             x: labelPt.x - textSize.width / 2,
@@ -200,19 +258,42 @@ struct GraphView: View {
                 .onTapGesture { screenPt in
                     guard let nearest = sim.nodes.min(by: { a, b in
                         screenDist(a, screenPt) < screenDist(b, screenPt)
-                    }), screenDist(nearest, screenPt) < 28 else { return }
+                    }), screenDist(nearest, screenPt) < 28,
+                    nearest.type == .note else { return }
                     if let note = notes.first(where: { $0.id == nearest.id }) { onSelect(note) }
                 }
-                // Pan
+                // Pan or node drag
                 .gesture(
                     DragGesture(minimumDistance: 4)
                         .onChanged { v in
-                            offset = CGSize(
-                                width:  lastOffset.width  + v.translation.width,
-                                height: lastOffset.height + v.translation.height
-                            )
+                            if draggingNodeId == nil {
+                                // Decide mode on first movement
+                                if let nearest = sim.nodes.min(by: { a, b in
+                                    screenDist(a, v.startLocation) < screenDist(b, v.startLocation)
+                                }), screenDist(nearest, v.startLocation) < 28 {
+                                    draggingNodeId = nearest.id
+                                    sim.startDrag(nodeId: nearest.id)
+                                }
+                            }
+                            if let nodeId = draggingNodeId {
+                                let simX = (v.location.x - offset.width) / scale
+                                let simY = (v.location.y - offset.height) / scale
+                                sim.moveDrag(nodeId: nodeId, x: Double(simX), y: Double(simY))
+                            } else {
+                                offset = CGSize(
+                                    width:  lastOffset.width  + v.translation.width,
+                                    height: lastOffset.height + v.translation.height
+                                )
+                            }
                         }
-                        .onEnded { _ in lastOffset = offset }
+                        .onEnded { _ in
+                            if draggingNodeId != nil {
+                                sim.endDrag()
+                                draggingNodeId = nil
+                            } else {
+                                lastOffset = offset
+                            }
+                        }
                 )
                 // Zoom — anchored to canvas center so it feels natural
                 .gesture(

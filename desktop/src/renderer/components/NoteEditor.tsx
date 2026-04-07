@@ -238,12 +238,11 @@ export function NoteEditor({
     const cur = ed.getPosition(); if (!cur) return
     wikiPosRef.current = null
     setWikiPalette(p => ({ ...p, open: false }))
-    setTimeout(() => {
-      const insertText = `[[${note.title}]]`
-      ed.setSelection(new monaco.Selection(pos.lineNumber, pos.column, cur.lineNumber, cur.column))
-      ed.executeEdits('wiki-link', [{ range: ed.getSelection()!, text: insertText }])
-      ed.focus()
-    }, 0)
+    const insertText = `[[${note.title}]]`
+    ed.setSelection(new monaco.Selection(pos.lineNumber, pos.column, cur.lineNumber, cur.column))
+    ed.executeEdits('wiki-link', [{ range: ed.getSelection()!, text: insertText }])
+    ed.setPosition({ lineNumber: pos.lineNumber, column: pos.column + insertText.length })
+    ed.focus()
   }, [])
 
   const doInsertRef      = useRef(doInsert)
@@ -445,6 +444,36 @@ export function NoteEditor({
   useEffect(() => {
     editorRef.current?.updateOptions({ fontSize })
   }, [fontSize])
+
+  // ── Tag autocomplete ─────────────────────────────────────────────────────────
+  useEffect(() => {
+    const disposable = monaco.languages.registerCompletionItemProvider(TYPST_LANGUAGE_ID, {
+      triggerCharacters: [' ', ','],
+      provideCompletionItems(model, position) {
+        const line = model.getLineContent(position.lineNumber)
+        if (!/^\/\/ @tags:/.test(line)) return { suggestions: [] }
+
+        const beforeCursor = line.slice(0, position.column - 1)
+        const lastSep = Math.max(beforeCursor.lastIndexOf(','), beforeCursor.indexOf(':'))
+        const partial = beforeCursor.slice(lastSep + 1).trimStart().toLowerCase()
+
+        const allTags = [...new Set(notesRef.current.flatMap(n => n.tags))]
+        const filtered = allTags.filter(t => t.toLowerCase().startsWith(partial) && t.toLowerCase() !== partial)
+        if (filtered.length === 0) return { suggestions: [] }
+
+        const replaceStart = position.column - partial.length
+        return {
+          suggestions: filtered.map(tag => ({
+            label: tag,
+            kind: monaco.languages.CompletionItemKind.Value,
+            insertText: tag,
+            range: new monaco.Range(position.lineNumber, replaceStart, position.lineNumber, position.column),
+          })),
+        }
+      },
+    })
+    return () => disposable.dispose()
+  }, [])
 
   // ── Image drag-and-drop ──────────────────────────────────────────────────────
   useEffect(() => {

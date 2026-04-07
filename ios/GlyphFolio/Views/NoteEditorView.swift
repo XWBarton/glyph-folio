@@ -118,6 +118,35 @@ class EditorController: ObservableObject {
         tv.replace(range, withText: "[[\(title)]]")
     }
 
+    /// Completes the current partial tag on the // @tags: line.
+    func insertTagCompletion(_ tag: String) {
+        guard let tv = textView else { return }
+        let cursorLoc = tv.selectedRange.location
+        let ns = tv.text as NSString
+        let before = ns.substring(with: NSRange(location: 0, length: cursorLoc))
+        let nsB = before as NSString
+        let colonIdx = nsB.range(of: ":", options: .backwards).location
+        let commaIdx = nsB.range(of: ",", options: .backwards).location
+        let sepIdx: Int
+        if colonIdx == NSNotFound && commaIdx == NSNotFound {
+            sepIdx = NSNotFound
+        } else if colonIdx == NSNotFound {
+            sepIdx = commaIdx
+        } else if commaIdx == NSNotFound {
+            sepIdx = colonIdx
+        } else {
+            sepIdx = max(colonIdx, commaIdx)
+        }
+        var replaceStart = sepIdx != NSNotFound ? sepIdx + 1 : cursorLoc
+        // skip leading whitespace
+        while replaceStart < cursorLoc && ns.character(at: replaceStart) == 32 { replaceStart += 1 }
+        guard let start = tv.position(from: tv.beginningOfDocument, offset: replaceStart),
+              let end   = tv.position(from: tv.beginningOfDocument, offset: cursorLoc),
+              let range = tv.textRange(from: start, to: end) else { return }
+        tv.replace(range, withText: tag)
+        tv.delegate?.textViewDidChange?(tv)
+    }
+
     /// Navigates to the // @tags: line (or inserts one at the top if absent).
     /// If tags already exist, appends ", " so the user can type another tag.
     func insertOrFocusTags(replacingSlash: Bool = false) {
@@ -231,7 +260,8 @@ struct TypstEditor: UIViewRepresentable {
     var onSlashTyped: () -> Void = {}
     var onWikiLinkTyped: () -> Void = {}
     var onShowPalette: () -> Void = {}
-    var onInsertImage: () -> Void = {}
+    var onWikiLinkTapped: (String) -> Void = { _ in }
+    var onTagPartialChanged: (String?) -> Void = { _ in }
 
     func makeCoordinator() -> Coordinator { Coordinator(self) }
 
@@ -251,7 +281,7 @@ struct TypstEditor: UIViewRepresentable {
 
         // Attach the format toolbar as the keyboard's input accessory —
         // it slides up with the keyboard and takes no space when keyboard is hidden.
-        let toolbar = FormatToolbar(controller: controller, onShowPalette: onShowPalette, onInsertImage: onInsertImage)
+        let toolbar = FormatToolbar(controller: controller, onShowPalette: onShowPalette)
         let host = UIHostingController(rootView: toolbar)
         host.view.frame = CGRect(x: 0, y: 0, width: 0, height: 52)
         host.view.backgroundColor = .clear
@@ -260,6 +290,14 @@ struct TypstEditor: UIViewRepresentable {
 
         tv.attributedText = buildHighlightedText(text)
         controller.textView = tv
+
+        // Wikilink tap: detect [[...]] at the tapped character position
+        let wikiTap = UITapGestureRecognizer(target: context.coordinator,
+                                             action: #selector(Coordinator.handleWikiLinkTap(_:)))
+        wikiTap.cancelsTouchesInView = false
+        wikiTap.delegate = context.coordinator
+        tv.addGestureRecognizer(wikiTap)
+
         return tv
     }
 
@@ -271,11 +309,11 @@ struct TypstEditor: UIViewRepresentable {
             tv.selectedRange = NSRange(location: clamped, length: 0)
         }
         // Keep toolbar callbacks up to date
-        context.coordinator.toolbarHost?.rootView = FormatToolbar(controller: controller, onShowPalette: onShowPalette, onInsertImage: onInsertImage)
+        context.coordinator.toolbarHost?.rootView = FormatToolbar(controller: controller, onShowPalette: onShowPalette)
         context.coordinator.parent = self
     }
 
-    class Coordinator: NSObject, UITextViewDelegate {
+    class Coordinator: NSObject, UITextViewDelegate, UIGestureRecognizerDelegate {
         var parent: TypstEditor
         var toolbarHost: UIHostingController<FormatToolbar>?
         private var highlightWork: DispatchWorkItem?
@@ -343,6 +381,18 @@ struct TypstEditor: UIViewRepresentable {
                 DispatchQueue.main.async { self.parent.onWikiLinkTyped() }
             }
 
+            // @tags: partial detection — find the start of the current line
+            var lineStart = loc
+            while lineStart > 0 && ns.character(at: lineStart - 1) != 10 { lineStart -= 1 } // 10 = '\n'
+            let currentLine = ns.substring(with: NSRange(location: lineStart, length: max(0, loc - lineStart)))
+            if currentLine.hasPrefix("// @tags:") {
+                let afterSep = currentLine.components(separatedBy: CharacterSet(charactersIn: ":,")).last ?? ""
+                let partial = afterSep.trimmingCharacters(in: .whitespaces)
+                DispatchQueue.main.async { self.parent.onTagPartialChanged(partial) }
+            } else {
+                DispatchQueue.main.async { self.parent.onTagPartialChanged(nil) }
+            }
+
             // Debounced highlight
             highlightWork?.cancel()
             let item = DispatchWorkItem { [weak self, weak tv] in
@@ -360,6 +410,33 @@ struct TypstEditor: UIViewRepresentable {
             let len = tv.text.utf16.count
             tv.selectedRange = NSRange(location: min(cursor.location, len), length: cursor.length)
             isHighlighting = false
+        }
+
+        // Allow simultaneous recognition with UITextView's built-in gestures
+        func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer,
+                               shouldRecognizeSimultaneouslyWith other: UIGestureRecognizer) -> Bool { true }
+
+        @objc func handleWikiLinkTap(_ recognizer: UITapGestureRecognizer) {
+            guard let tv = recognizer.view as? UITextView else { return }
+            let pt = recognizer.location(in: tv)
+            let adjustedPt = CGPoint(
+                x: pt.x - tv.textContainerInset.left,
+                y: pt.y - tv.textContainerInset.top
+            )
+            let charIndex = tv.layoutManager.characterIndex(
+                for: adjustedPt,
+                in: tv.textContainer,
+                fractionOfDistanceBetweenInsertionPoints: nil
+            )
+            let text = tv.text ?? ""
+            guard let regex = try? NSRegularExpression(pattern: #"\[\[([^\]]+)\]\]"#) else { return }
+            let nsText = text as NSString
+            for match in regex.matches(in: text, range: NSRange(location: 0, length: nsText.length)) {
+                guard NSLocationInRange(charIndex, match.range), match.numberOfRanges > 1 else { continue }
+                let title = nsText.substring(with: match.range(at: 1))
+                parent.onWikiLinkTapped(title)
+                return
+            }
         }
     }
 }
@@ -396,6 +473,7 @@ private let allSlashCommands: [SlashCommand] = [
     .init(id: "wikilink",  category: "Link",      icon: "link.badge.plus",                         name: "Wiki Link",      description: "Link to another note",     syntax: "[[]]"),
     .init(id: "url",       category: "Link",      icon: "globe",                                   name: "URL Link",       description: "External hyperlink",       syntax: "#link(\"url\")[text]"),
     .init(id: "tags",      category: "Meta",      icon: "tag",                                     name: "Tags",           description: "Add tags to this note",    syntax: "// @tags: "),
+    .init(id: "image",     category: "Media",     icon: "photo",                                   name: "Image",          description: "Insert image from photo library", syntax: ""),
 ]
 
 // ── Slash command palette ─────────────────────────────────────────────────────
@@ -413,7 +491,7 @@ struct SlashCommandPalette: View {
             $0.description.localizedCaseInsensitiveContains(search)
         }
         let grouped = Dictionary(grouping: pool, by: \.category)
-        return ["Heading", "Format", "List", "Block", "Link", "Meta"].compactMap { cat in
+        return ["Format", "List", "Block", "Link", "Meta", "Media", "Heading"].compactMap { cat in
             guard let cmds = grouped[cat] else { return nil }
             return (cat, cmds)
         }
@@ -466,7 +544,6 @@ struct SlashCommandPalette: View {
 struct FormatToolbar: View {
     let controller: EditorController
     let onShowPalette: () -> Void
-    var onInsertImage: () -> Void = {}
 
     private let quickChars = ["=", "*", "_", "-", "+", "["]
 
@@ -492,38 +569,16 @@ struct FormatToolbar: View {
                 .fill(Color.secondary.opacity(0.25))
                 .frame(width: 1, height: 22)
 
-            // Image picker button
-            Button(action: onInsertImage) {
-                Image(systemName: "photo")
+            // Commands button (icon only)
+            Button(action: onShowPalette) {
+                Image(systemName: "slash.circle.fill")
                     .font(.system(size: 15))
                     .frame(width: 36, height: 36)
-                    .background(.ultraThinMaterial)
+                    .background(Color.accentColor.opacity(0.13))
+                    .foregroundStyle(.tint)
                     .clipShape(RoundedRectangle(cornerRadius: 8))
             }
-            .foregroundStyle(.secondary)
             .padding(.leading, 8)
-            .padding(.trailing, 4)
-            .fixedSize()
-
-            Rectangle()
-                .fill(Color.secondary.opacity(0.25))
-                .frame(width: 1, height: 22)
-
-            // Pinned Commands button
-            Button(action: onShowPalette) {
-                HStack(spacing: 5) {
-                    Image(systemName: "slash.circle.fill")
-                        .font(.system(size: 14, weight: .semibold))
-                    Text("Commands")
-                        .font(.system(size: 13, weight: .semibold))
-                }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 8)
-                .background(Color.accentColor.opacity(0.13))
-                .foregroundStyle(.tint)
-                .clipShape(RoundedRectangle(cornerRadius: 8))
-            }
-            .padding(.leading, 12)
             .padding(.trailing, 6)
             .fixedSize()                    // don't let it shrink
 
@@ -599,6 +654,38 @@ struct WikiLinkPicker: View {
     }
 }
 
+// ── Tag suggestion bar ────────────────────────────────────────────────────────
+
+struct TagSuggestionBar: View {
+    let suggestions: [String]
+    let onSelect: (String) -> Void
+
+    var body: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 6) {
+                ForEach(suggestions, id: \.self) { tag in
+                    Button {
+                        onSelect(tag)
+                    } label: {
+                        Text("#\(tag)")
+                            .font(.system(size: 13, weight: .medium))
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 5)
+                            .background(Color.accentColor.opacity(0.12))
+                            .foregroundStyle(.tint)
+                            .clipShape(Capsule())
+                            .overlay(Capsule().stroke(Color.accentColor.opacity(0.25), lineWidth: 1))
+                    }
+                }
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 6)
+        }
+        .background(.ultraThinMaterial)
+        .transition(.move(edge: .bottom).combined(with: .opacity))
+    }
+}
+
 // ── Note editor view ──────────────────────────────────────────────────────────
 
 struct NoteEditorView: View {
@@ -611,21 +698,52 @@ struct NoteEditorView: View {
     @State private var showImagePicker = false
     @State private var pickerItem: PhotosPickerItem? = nil
     @State private var isUploadingImage = false
+    @State private var tagSuggestions: [String] = []
 
     var body: some View {
+        ZStack(alignment: .bottom) {
         TypstEditor(
             text: $localBody,
             controller: controller,
             onSlashTyped: { showCommandPalette = true },
             onWikiLinkTyped: { showWikiLinkPicker = true },
             onShowPalette: { showCommandPalette = true },
-            onInsertImage: { showImagePicker = true }
+            onWikiLinkTapped: { title in
+                Task {
+                    if let target = noteStore.notes.first(where: {
+                        $0.title.lowercased() == title.lowercased()
+                    }) {
+                        await noteStore.select(target)
+                    }
+                }
+            },
+            onTagPartialChanged: { partial in
+                guard let partial, !partial.isEmpty else {
+                    if !tagSuggestions.isEmpty { withAnimation { tagSuggestions = [] } }
+                    return
+                }
+                let allTags = Array(Set(noteStore.notes.flatMap(\.tags)))
+                let lower = partial.lowercased()
+                let filtered = allTags
+                    .filter { $0.lowercased().hasPrefix(lower) && $0.lowercased() != lower }
+                    .sorted()
+                withAnimation { tagSuggestions = filtered }
+            }
         )
+
+        if !tagSuggestions.isEmpty {
+            TagSuggestionBar(suggestions: tagSuggestions) { tag in
+                controller.insertTagCompletion(tag)
+            }
+        }
+        } // ZStack
         .onChange(of: localBody) { _, newValue in noteStore.updateBody(newValue) }
         .background(backgroundGradient)
         .sheet(isPresented: $showCommandPalette) {
             SlashCommandPalette(isPresented: $showCommandPalette) { cmd in
-                if cmd.id == "checkbox" {
+                if cmd.id == "image" {
+                    showImagePicker = true
+                } else if cmd.id == "checkbox" {
                     controller.insertChecklistItem(replacingSlash: true)
                 } else if cmd.id == "tags" {
                     controller.insertOrFocusTags(replacingSlash: true)
