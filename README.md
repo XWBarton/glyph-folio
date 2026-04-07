@@ -92,6 +92,8 @@ npm run dev
 
 Open `ios/GlyphFolio.xcodeproj` in Xcode and build to your device or simulator. In **Settings** inside the app, enter your server URL and auth token (if set).
 
+I'm going to try and get a developer account soon for Test Flight.
+
 ## Keep running (PM2)
 
 ```bash
