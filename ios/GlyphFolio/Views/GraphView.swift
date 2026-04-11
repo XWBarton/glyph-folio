@@ -22,7 +22,12 @@ final class GraphSimulation: ObservableObject {
     }
 
     @Published var nodes: [Node] = []
-    @Published var edges: [(String, String)] = []   // pairs of note IDs
+    @Published var edges: [(String, String)] = []
+
+    // d3-force style alpha cooling: starts at 1, decays toward 0 over ~450 ticks (~15 s)
+    private var alpha: Double = 1.0
+    private let alphaDecay: Double = 1 - pow(0.001, 1.0 / 450.0)  // ≈ 0.0153
+    private let alphaMin:   Double = 0.001
 
     private var cancellable: AnyCancellable?
     private var draggedNodeId: String? = nil
@@ -31,8 +36,16 @@ final class GraphSimulation: ObservableObject {
         let n = notes.count
         guard n > 0 else { nodes = []; edges = []; return }
 
-        let r = min(size.width, size.height) * 0.33
-        let cx = size.width / 2, cy = size.height / 2
+        // Phyllotaxis spiral — distributes nodes evenly without clustering at poles
+        let goldenAngle = 2.399963  // 2π / φ²
+        let spread = min(size.width, size.height) * 0.38
+
+        func spiralPos(_ i: Int, _ total: Int) -> (Double, Double) {
+            let t = Double(i) / Double(max(total - 1, 1))
+            let angle = Double(i) * goldenAngle
+            let r = spread * sqrt(t + 0.05)
+            return (size.width / 2 + r * cos(angle), size.height / 2 + r * sin(angle))
+        }
 
         var seen = Set<String>()
         var result: [(String, String)] = []
@@ -40,9 +53,8 @@ final class GraphSimulation: ObservableObject {
         switch lens {
         case .links:
             nodes = notes.enumerated().map { i, note in
-                let angle = 2 * .pi * Double(i) / Double(n)
-                return Node(id: note.id, title: note.title, type: .note,
-                            x: cx + r * cos(angle), y: cy + r * sin(angle))
+                let (x, y) = spiralPos(i, n)
+                return Node(id: note.id, title: note.title, type: .note, x: x, y: y)
             }
             for note in notes {
                 for link in note.links {
@@ -56,21 +68,17 @@ final class GraphSimulation: ObservableObject {
             }
 
         case .tags:
-            // All nodes (notes + tags) spread uniformly on the same ring
             let allTags = Array(Set(notes.flatMap(\.tags))).sorted()
             let total = n + allTags.count
             let noteNodes: [Node] = notes.enumerated().map { i, note in
-                let angle = 2 * .pi * Double(i) / Double(max(1, total))
-                return Node(id: note.id, title: note.title, type: .note,
-                            x: cx + r * cos(angle), y: cy + r * sin(angle))
+                let (x, y) = spiralPos(i, total)
+                return Node(id: note.id, title: note.title, type: .note, x: x, y: y)
             }
             let tagNodes: [Node] = allTags.enumerated().map { i, tag in
-                let angle = 2 * .pi * Double(n + i) / Double(max(1, total))
-                return Node(id: "tag:\(tag)", title: tag, type: .tag,
-                            x: cx + r * cos(angle), y: cy + r * sin(angle))
+                let (x, y) = spiralPos(n + i, total)
+                return Node(id: "tag:\(tag)", title: tag, type: .tag, x: x, y: y)
             }
             nodes = noteNodes + tagNodes
-
             for note in notes {
                 for tag in note.tags {
                     let key = "\(note.id)|tag:\(tag)"
@@ -80,6 +88,7 @@ final class GraphSimulation: ObservableObject {
         }
 
         edges = result
+        alpha = 1.0  // reheat for new layout
     }
 
     func start(size: CGSize) {
@@ -95,96 +104,106 @@ final class GraphSimulation: ObservableObject {
         for i in nodes.indices {
             nodes[i].x  = Double.random(in: pad...(size.width  - pad))
             nodes[i].y  = Double.random(in: pad...(size.height - pad))
-            nodes[i].vx = Double.random(in: -4...4)
-            nodes[i].vy = Double.random(in: -4...4)
+            nodes[i].vx = 0; nodes[i].vy = 0
         }
+        alpha = 1.0  // reheat so the sim re-settles from the new positions
     }
 
     func startDrag(nodeId: String) {
         draggedNodeId = nodeId
+        alpha = max(alpha, 0.3)  // reheat so graph can readjust around dragged node
         if let i = nodes.firstIndex(where: { $0.id == nodeId }) {
-            nodes[i].vx = 0
-            nodes[i].vy = 0
+            nodes[i].vx = 0; nodes[i].vy = 0
         }
     }
 
     func moveDrag(nodeId: String, x: Double, y: Double) {
         guard draggedNodeId == nodeId,
               let i = nodes.firstIndex(where: { $0.id == nodeId }) else { return }
-        nodes[i].x = x
-        nodes[i].y = y
-        nodes[i].vx = 0
-        nodes[i].vy = 0
+        nodes[i].x = x; nodes[i].y = y
+        nodes[i].vx = 0; nodes[i].vy = 0
     }
 
-    func endDrag() {
-        draggedNodeId = nil
-    }
+    func endDrag() { draggedNodeId = nil }
 
     private func step(size: CGSize) {
         guard nodes.count > 1 else { return }
+        // Skip physics when cooled — but still run if user is dragging (keep alpha alive)
+        guard alpha > alphaMin || draggedNodeId != nil else { return }
 
-        let repulsion = 10_000.0
-        let springK   = 0.05
-        let springLen = 150.0
-        let gravity   = 0.06
-        let damping   = 0.88
-        let minSep    = 38.0
+        // d3-force style constants
+        let charge:        Double = -3_500  // many-body repulsion per node pair
+        let linkDist:      Double = 120     // desired edge length
+        let linkStr:       Double = 0.6     // spring stiffness, split between endpoints
+        let collideR:      Double = 50      // hard minimum separation
+        let velocityDecay: Double = 0.4     // fraction of velocity lost per tick
         let cx = size.width / 2, cy = size.height / 2
 
         var fx = [Double](repeating: 0, count: nodes.count)
         var fy = [Double](repeating: 0, count: nodes.count)
 
-        // Repulsion (all pairs) + collision separation
+        // Many-body repulsion — scaled by alpha
         for i in nodes.indices {
             for j in (i + 1) ..< nodes.count {
                 let dx = nodes[i].x - nodes[j].x
                 let dy = nodes[i].y - nodes[j].y
                 let d2 = max(dx * dx + dy * dy, 1)
                 let d  = sqrt(d2)
-                let f  = repulsion / d2
+                let f  = alpha * charge / d2   // negative → repulsion
                 fx[i] += f * dx / d;  fy[i] += f * dy / d
                 fx[j] -= f * dx / d;  fy[j] -= f * dy / d
-
-                // Extra push when nodes are too close
-                if d < minSep {
-                    let overlap = (minSep - d) * 0.5
-                    let nx = dx / d
-                    let ny = dy / d
-                    fx[i] += nx * overlap * 1.5;  fy[i] += ny * overlap * 1.5
-                    fx[j] -= nx * overlap * 1.5;  fy[j] -= ny * overlap * 1.5
-                }
             }
         }
 
-        // Spring attraction along edges
+        // Link spring — pulls connected nodes toward linkDist
         for (aId, bId) in edges {
             guard let i = nodes.firstIndex(where: { $0.id == aId }),
                   let j = nodes.firstIndex(where: { $0.id == bId }) else { continue }
             let dx = nodes[j].x - nodes[i].x
             let dy = nodes[j].y - nodes[i].y
             let d  = max(sqrt(dx * dx + dy * dy), 0.001)
-            let stretch = d - springLen
-            let f = springK * stretch
-            fx[i] += f * dx / d;  fy[i] += f * dy / d
-            fx[j] -= f * dx / d;  fy[j] -= f * dy / d
+            let f  = alpha * linkStr * (d - linkDist) / d
+            fx[i] += f * dx * 0.5;  fy[i] += f * dy * 0.5
+            fx[j] -= f * dx * 0.5;  fy[j] -= f * dy * 0.5
         }
 
-        // Uniform gentle gravity toward center — keeps nodes from drifting off screen
+        // d3-style centre force: translate the whole graph's centre-of-mass to canvas centre.
+        // This does NOT pull individual nodes — it just corrects global drift.
+        let n = Double(nodes.count)
+        let meanX = nodes.map(\.x).reduce(0, +) / n
+        let meanY = nodes.map(\.y).reduce(0, +) / n
+        let shiftX = (cx - meanX) * alpha * 0.1
+        let shiftY = (cy - meanY) * alpha * 0.1
         for i in nodes.indices {
-            fx[i] += gravity * (cx - nodes[i].x)
-            fy[i] += gravity * (cy - nodes[i].y)
+            fx[i] += shiftX
+            fy[i] += shiftY
         }
 
-        // Integrate
-        let pad = 50.0
+        // Collision — NOT alpha-scaled; always prevent overlap
+        for i in nodes.indices {
+            for j in (i + 1) ..< nodes.count {
+                let dx = nodes[i].x - nodes[j].x
+                let dy = nodes[i].y - nodes[j].y
+                let d  = sqrt(dx * dx + dy * dy)
+                guard d < collideR, d > 0 else { continue }
+                let push = (collideR - d) / d * 0.5
+                fx[i] += dx * push;  fy[i] += dy * push
+                fx[j] -= dx * push;  fy[j] -= dy * push
+            }
+        }
+
+        // Integrate with velocity decay
+        let pad = 30.0
         for i in nodes.indices {
             guard nodes[i].id != draggedNodeId else { continue }
-            nodes[i].vx = (nodes[i].vx + fx[i]) * damping
-            nodes[i].vy = (nodes[i].vy + fy[i]) * damping
+            nodes[i].vx = (nodes[i].vx + fx[i]) * (1 - velocityDecay)
+            nodes[i].vy = (nodes[i].vy + fy[i]) * (1 - velocityDecay)
             nodes[i].x  = min(max(nodes[i].x + nodes[i].vx, pad), size.width  - pad)
             nodes[i].y  = min(max(nodes[i].y + nodes[i].vy, pad), size.height - pad)
         }
+
+        // Cool down alpha each tick
+        alpha *= (1 - alphaDecay)
     }
 }
 
@@ -206,6 +225,8 @@ struct GraphView: View {
     @State private var scale: CGFloat = 1.0
     @State private var lastScale: CGFloat = 1.0
     @State private var draggingNodeId: String? = nil
+    // Selection state — first tap highlights, second tap opens
+    @State private var selectedNodeId: String? = nil
 
     var body: some View {
         GeometryReader { geo in
@@ -214,27 +235,41 @@ struct GraphView: View {
                     ctx.translateBy(x: offset.width, y: offset.height)
                     ctx.scaleBy(x: scale, y: scale)
 
-                    // Edges — color-matched to tag, curved so parallel edges don't stack
+                    // Pre-compute which node IDs are connected to the selection
+                    let connectedIds: Set<String>? = selectedNodeId.map { sel in
+                        var ids: Set<String> = [sel]
+                        for (a, b) in sim.edges {
+                            if a == sel { ids.insert(b) }
+                            if b == sel { ids.insert(a) }
+                        }
+                        return ids
+                    }
+
+                    // Edges — highlighted when connected to selection, dimmed otherwise
                     for (aId, bId) in sim.edges {
                         guard let n1 = sim.nodes.first(where: { $0.id == aId }),
                               let n2 = sim.nodes.first(where: { $0.id == bId }) else { continue }
+                        let isActive = connectedIds.map { $0.contains(aId) && $0.contains(bId) } ?? true
                         let tagNode = [n1, n2].first(where: { $0.type == .tag })
-                        let edgeColor: Color = {
-                            guard let t = tagNode else { return .secondary.opacity(0.25) }
-                            if let hex = settings.tagColors[t.title] { return Color(hex: hex).opacity(0.35) }
-                            return tagHashColor(t.title).opacity(0.35)
+                        let baseColor: Color = {
+                            guard let t = tagNode else { return .secondary }
+                            if let hex = settings.tagColors[t.title] { return Color(hex: hex) }
+                            return tagHashColor(t.title)
                         }()
                         var p = Path()
                         p.move(to: CGPoint(x: n1.x, y: n1.y))
                         p.addLine(to: CGPoint(x: n2.x, y: n2.y))
-                        ctx.stroke(p, with: .color(edgeColor), lineWidth: 1)
+                        ctx.stroke(p, with: .color(baseColor.opacity(isActive ? 0.55 : 0.06)), lineWidth: isActive ? 1.5 : 1)
                     }
 
-                    // Nodes — draw notes first, then tags on top so tags are always visible
+                    // Nodes — draw notes first, then tags on top
                     for pass in [false, true] {
                       for node in sim.nodes {
                         let isTag = node.type == .tag
                         guard isTag == pass else { continue }
+                        let isActive = connectedIds.map { $0.contains(node.id) } ?? true
+                        let isSelected = node.id == selectedNodeId
+                        let dim: Double = isActive ? 1.0 : 0.15
                         let noteForNode = isTag ? nil : notes.first(where: { $0.id == node.id })
                         let nodeColor: Color = {
                             if isTag {
@@ -245,7 +280,7 @@ struct GraphView: View {
                             if let hex = settings.tagColors[tag] { return Color(hex: hex) }
                             return tagHashColor(tag)
                         }()
-                        let r: Double = isTag ? 6 : 7
+                        let r: Double = isTag ? 6 : (isSelected ? 9 : 7)
                         if isTag {
                             var diamond = Path()
                             diamond.move(to:    CGPoint(x: node.x,     y: node.y - r))
@@ -253,22 +288,22 @@ struct GraphView: View {
                             diamond.addLine(to: CGPoint(x: node.x,     y: node.y + r))
                             diamond.addLine(to: CGPoint(x: node.x - r, y: node.y))
                             diamond.closeSubpath()
-                            ctx.fill(diamond, with: .color(nodeColor.opacity(0.22)))
-                            ctx.stroke(diamond, with: .color(nodeColor), style: StrokeStyle(lineWidth: 2))
+                            ctx.fill(diamond, with: .color(nodeColor.opacity(0.22 * dim)))
+                            ctx.stroke(diamond, with: .color(nodeColor.opacity(dim)), style: StrokeStyle(lineWidth: 2))
                         } else {
                             let circle = CGRect(x: node.x - r, y: node.y - r, width: r * 2, height: r * 2)
-                            ctx.fill(Circle().path(in: circle), with: .color(nodeColor.opacity(0.18)))
-                            ctx.stroke(Circle().path(in: circle), with: .color(nodeColor), lineWidth: 1.5)
+                            ctx.fill(Circle().path(in: circle), with: .color(nodeColor.opacity(0.18 * dim)))
+                            ctx.stroke(Circle().path(in: circle), with: .color(nodeColor.opacity(dim)), lineWidth: isSelected ? 2.5 : 1.5)
                         }
+                        guard isActive else { continue }  // skip labels for dimmed nodes
                         let truncated = node.title.count > 18
                             ? String(node.title.prefix(16)) + "…"
                             : node.title
-                        // Tag labels: colored, bold, larger — clearly a category header
                         let fontSize: CGFloat = isTag ? 11 : 10
                         let label = Text(truncated)
-                            .font(.system(size: fontSize, weight: isTag ? .semibold : .medium))
+                            .font(.system(size: fontSize, weight: isTag ? .semibold : (isSelected ? .semibold : .medium)))
                             .foregroundStyle(isTag ? nodeColor : Color.primary)
-                        let labelPt = CGPoint(x: node.x, y: node.y + (isTag ? r + 9 : 18))
+                        let labelPt = CGPoint(x: node.x, y: node.y + (isTag ? r + 9 : r + 11))
                         let textSize = CGSize(width: CGFloat(truncated.count) * (isTag ? 6.5 : 5.5) + 8, height: 14)
                         let bgRect = CGRect(
                             x: labelPt.x - textSize.width / 2,
@@ -286,13 +321,26 @@ struct GraphView: View {
                       }
                     }
                 }
-                // Tap: hit-test in screen space accounting for transform
+                // Tap: first tap selects + highlights connections; second tap opens note
                 .onTapGesture { screenPt in
                     guard let nearest = sim.nodes.min(by: { a, b in
                         screenDist(a, screenPt) < screenDist(b, screenPt)
-                    }), screenDist(nearest, screenPt) < 28,
-                    nearest.type == .note else { return }
-                    if let note = notes.first(where: { $0.id == nearest.id }) { onSelect(note) }
+                    }), screenDist(nearest, screenPt) < 36 else {
+                        selectedNodeId = nil   // tap empty space → clear selection
+                        return
+                    }
+                    if nearest.type == .note {
+                        if selectedNodeId == nearest.id {
+                            // Second tap on same node → open it
+                            if let note = notes.first(where: { $0.id == nearest.id }) { onSelect(note) }
+                            selectedNodeId = nil
+                        } else {
+                            selectedNodeId = nearest.id
+                        }
+                    } else {
+                        // Tapping a tag node just highlights it
+                        selectedNodeId = selectedNodeId == nearest.id ? nil : nearest.id
+                    }
                 }
                 // Pan or node drag
                 .gesture(
@@ -346,8 +394,10 @@ struct GraphView: View {
                 // Double-tap to reset
                 .onTapGesture(count: 2) {
                     withAnimation(.spring()) {
-                        offset = .zero; lastOffset = .zero
-                        scale = 1; lastScale = 1
+                        let s = fitScale()
+                        scale = s; lastScale = s
+                        let off = centreOffset(scale: s)
+                        offset = off; lastOffset = off
                     }
                 }
 
@@ -370,22 +420,44 @@ struct GraphView: View {
                 size = geo.size
                 sim.reset(notes: notes, lens: lens, size: size)
                 sim.start(size: size)
+                let s = fitScale(); scale = s; lastScale = s
+                let off = centreOffset(scale: s); offset = off; lastOffset = off
             }
             .onDisappear { sim.stop() }
             .onChange(of: notes.map { $0.id }) { _, _ in
                 sim.stop()
                 sim.reset(notes: notes, lens: lens, size: size)
                 sim.start(size: size)
+                let s = fitScale(); scale = s; lastScale = s
+                let off = centreOffset(scale: s); offset = off; lastOffset = off
             }
             .onChange(of: lens) { _, newLens in
+                selectedNodeId = nil
                 sim.stop()
                 sim.reset(notes: notes, lens: newLens, size: size)
                 sim.start(size: size)
+                let s = fitScale(); scale = s; lastScale = s
+                let off = centreOffset(scale: s); offset = off; lastOffset = off
             }
             .onReceive(NotificationCenter.default.publisher(for: .deviceDidShake)) { _ in
                 sim.scatter(size: size)
             }
         }
+    }
+
+    // Compute zoom so the graph fills the view comfortably.
+    // Formula: 3.5 / √nodeCount  (≈1× at ≤12 nodes, ≈0.7× at 25, ≈0.55× at 40)
+    private func fitScale() -> CGFloat {
+        let n = sim.nodes.count
+        guard n > 1 else { return 1.0 }
+        return min(1.0, max(0.35, 3.5 / sqrt(Double(n))))
+    }
+
+    // Offset that keeps physics centre at screen centre for a given scale.
+    // Canvas transform: screen_pt = physics_pt * scale + offset
+    // → offset = screen_centre - physics_centre * scale = size/2 * (1 - scale)
+    private func centreOffset(scale s: CGFloat) -> CGSize {
+        CGSize(width: size.width / 2 * (1 - s), height: size.height / 2 * (1 - s))
     }
 
     // Screen-space distance from node to tap point

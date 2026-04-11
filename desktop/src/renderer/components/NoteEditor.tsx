@@ -18,7 +18,8 @@ self.MonacoEnvironment = { getWorker: () => new editorWorker() }
 loader.config({ monaco })
 
 registerTypstLanguage(monaco)
-monaco.editor.defineTheme('liquid-glass-light', buildMonacoTheme({}))
+monaco.editor.defineTheme('glyph-light', buildMonacoTheme({}, false))
+monaco.editor.defineTheme('glyph-dark',  buildMonacoTheme({}, true))
 
 // Inject suggest widget overrides once
 if (!document.getElementById('glyph-folio-suggest-overrides')) {
@@ -75,10 +76,20 @@ export function NoteEditor({
   value, onChange, tokenColors, fontSize, spellCheckEnabled, customDictionary, onAddToDict,
   notes, onNavigate, noteId, onPickImage, onDropImage
 }: Props) {
+  const [isDark, setIsDark] = useState(() => window.matchMedia('(prefers-color-scheme: dark)').matches)
+
   useEffect(() => {
-    monaco.editor.defineTheme('liquid-glass-light', buildMonacoTheme(tokenColors))
-    monaco.editor.setTheme('liquid-glass-light')
-  }, [tokenColors])
+    const mq = window.matchMedia('(prefers-color-scheme: dark)')
+    const handler = (e: MediaQueryListEvent) => setIsDark(e.matches)
+    mq.addEventListener('change', handler)
+    return () => mq.removeEventListener('change', handler)
+  }, [])
+
+  useEffect(() => {
+    monaco.editor.defineTheme('glyph-light', buildMonacoTheme(tokenColors, false))
+    monaco.editor.defineTheme('glyph-dark',  buildMonacoTheme(tokenColors, true))
+    monaco.editor.setTheme(isDark ? 'glyph-dark' : 'glyph-light')
+  }, [tokenColors, isDark])
 
   const [findOpen, setFindOpen] = useState(false)
   const [findShowReplace, setFindShowReplace] = useState(false)
@@ -296,39 +307,74 @@ export function NoteEditor({
     ed.executeEdits('slash-bookmark', [{ range: new monaco.Range(sl, sc, el, ec), text: '' }])
 
     const fullUrl = /^https?:\/\//i.test(rawUrl) ? rawUrl : `https://${rawUrl}`
-    let domain = fullUrl, title = '', description = ''
+    let domain = fullUrl, title = '', description = '', imagePath = ''
     try { domain = new URL(fullUrl).hostname.replace(/^www\./, '') } catch {}
-    // Default title = domain (never the raw URL — // in content mode is a Typst line comment)
-    title = domain
+    title = domain  // default: domain (raw URL would trigger // Typst line comment)
+
     try {
       const html = await fetch(fullUrl).then(r => r.text())
       const doc = new DOMParser().parseFromString(html, 'text/html')
       const ogTitle = doc.querySelector('meta[property="og:title"]')?.getAttribute('content')
       const ogDesc  = doc.querySelector('meta[property="og:description"]')?.getAttribute('content')
       const metaDesc = doc.querySelector('meta[name="description"]')?.getAttribute('content')
+      const ogImage = doc.querySelector('meta[property="og:image"]')?.getAttribute('content')
       title = (ogTitle || doc.title || domain).trim()
       description = (ogDesc || metaDesc || '').trim()
-    } catch { /* fetch failed — use domain as title */ }
+
+      if (ogImage) {
+        try {
+          const imgResp = await fetch(ogImage)
+          const imgBuf = await imgResp.arrayBuffer()
+          const ct = imgResp.headers.get('content-type') ?? ''
+          const ext = ct.includes('png') ? 'png' : ct.includes('gif') ? 'gif' : ct.includes('webp') ? 'webp' : 'jpg'
+          const filename = `bm-${crypto.randomUUID()}.${ext}`
+          // btoa in chunks to avoid stack overflow on large buffers
+          const bytes = new Uint8Array(imgBuf)
+          let b64 = ''; const chunk = 8192
+          for (let i = 0; i < bytes.length; i += chunk)
+            b64 += String.fromCharCode(...bytes.subarray(i, i + chunk))
+          b64 = btoa(b64)
+          const noteId = noteIdRef.current
+          const res = await window.api.attachmentsWrite(noteId, filename, b64)
+          if ('ok' in res && res.ok) imagePath = `attachments/${noteId}/${filename}`
+        } catch { /* image unavailable — proceed without */ }
+      }
+    } catch { /* page fetch failed */ }
 
     // Escape text for Typst content mode: [], #, *, _, and // (line comment trigger)
     const esc = (s: string) => s
       .replace(/\[/g, '\\[').replace(/\]/g, '\\]')
       .replace(/#/g, '\\#').replace(/\*/g, '\\*').replace(/_/g, '\\_')
-      .replace(/\/\//g, '/\u200B/')  // zero-width space breaks // comment
+      .replace(/\/\//g, '/\u200B/')
 
-    const lines = [
-      `#block(stroke: 0.5pt + luma(200), radius: 4pt, inset: (x: 10pt, y: 8pt), width: 100%)[`,
-      `  #link("${fullUrl}")[*${esc(title)}*] #h(1fr) #text(fill: luma(140), size: 9pt)[${esc(domain)}]`,
-    ]
-    if (description) {
-      lines.push(`  \\`)
-      lines.push(`  #text(size: 9pt, fill: luma(80))[${esc(description)}]`)
+    // Build text column: title → description → domain (Notion-style stacking)
+    const textLines: string[] = [`#link("${fullUrl}")[*${esc(title)}*]`]
+    if (description) textLines.push(`#text(size: 9pt, fill: luma(110))[${esc(description)}]`)
+    textLines.push(`#text(size: 8pt, fill: luma(160))[${esc(domain)}]`)
+    const textCol = textLines.join('\\\n    ')
+
+    let snippet: string
+    if (imagePath) {
+      snippet = [
+        `#block(stroke: 0.5pt + luma(215), radius: 6pt, inset: 10pt, width: 100%)[`,
+        `  #grid(columns: (1fr, 88pt), gutter: 10pt, align: (left + top, right + top),`,
+        `    [${textCol}],`,
+        `    [#box(radius: 4pt, clip: true)[#image("${imagePath}", width: 88pt, height: 66pt, fit: "cover")]],`,
+        `  )`,
+        `]`,
+      ].join('\n') + '\n'
+    } else {
+      snippet = [
+        `#block(stroke: 0.5pt + luma(215), radius: 6pt, inset: (x: 12pt, y: 10pt), width: 100%)[`,
+        `  ${textCol}`,
+        `]`,
+      ].join('\n') + '\n'
     }
-    lines.push(`]`)
+
     const insertPos = ed.getPosition() ?? { lineNumber: sl, column: sc }
     ed.executeEdits('bookmark-insert', [{
       range: new monaco.Range(insertPos.lineNumber, insertPos.column, insertPos.lineNumber, insertPos.column),
-      text: lines.join('\n') + '\n'
+      text: snippet
     }])
     ed.focus()
   }, [])
@@ -645,7 +691,7 @@ export function NoteEditor({
         height="100%"
         language={TYPST_LANGUAGE_ID}
         value={value}
-        theme="liquid-glass-light"
+        theme={isDark ? 'glyph-dark' : 'glyph-light'}
         onMount={handleMount}
         onChange={(v) => onChange(v ?? '')}
         options={{

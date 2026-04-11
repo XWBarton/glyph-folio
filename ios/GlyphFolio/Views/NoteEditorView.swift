@@ -16,29 +16,37 @@ private let boldFont     = UIFont(name: "Menlo-Bold",        size: 16) ?? UIFont
 private let italicFont   = UIFont(name: "Menlo-Italic",      size: 16) ?? UIFont.monospacedSystemFont(ofSize: 16, weight: .regular)
 private let boldItalFont = UIFont(name: "Menlo-BoldItalic",  size: 16) ?? UIFont.monospacedSystemFont(ofSize: 16, weight: .bold)
 
-private func makeRule(_ pattern: String, _ hex: String? = nil,
+private func makeRule(_ pattern: String, _ light: String? = nil, dark: String? = nil,
                       bold: Bool = false, italic: Bool = false,
                       options: NSRegularExpression.Options = [.anchorsMatchLines]) -> TokenRule {
+    let color: UIColor? = light.map { lightHex in
+        let darkHex = dark ?? lightHex
+        return UIColor { $0.userInterfaceStyle == .dark ? UIColor(hex: darkHex) : UIColor(hex: lightHex) }
+    }
     let regex = try! NSRegularExpression(pattern: pattern, options: options)
-    return TokenRule(pattern: regex, color: hex.map { UIColor(hex: $0) }, bold: bold, italic: italic)
+    return TokenRule(pattern: regex, color: color, bold: bold, italic: italic)
 }
 
 private let tokenRules: [TokenRule] = [
-    makeRule(#"//[^\n]*"#,              "9ca3af", italic: true),            // comment
-    makeRule(#"^---$"#,                 "d1d5db"),                          // hr
-    makeRule(#"\$[^\$\n]+\$"#,         "c2410c"),                          // inline math
-    makeRule(#"```[\s\S]*?```"#,        "0f766e", options: []),             // code block
-    makeRule(#"`[^`\n]+`"#,            "0f766e"),                          // inline code
-    makeRule(#"\"[^\"\n]*\""#,         "059669"),                          // string
-    makeRule(#"^[-+]\s"#,              "2563eb", bold: true),              // list marker
-    makeRule(#"^={1,6}\s.+$"#,         "1d4ed8", bold: true),             // heading
-    makeRule(#"_[^_\n]+_"#,            "374151", italic: true),            // italic
-    makeRule(#"\*[^\*\n]+\*"#,         "111827", bold: true),              // bold
+    makeRule(#"//[^\n]*"#,              "9ca3af", dark: "6b7280",  italic: true),           // comment
+    makeRule(#"^---$"#,                 "d1d5db", dark: "4b5563"),                          // hr
+    makeRule(#"\$[^\$\n]+\$"#,         "c2410c", dark: "fb923c"),                          // inline math
+    makeRule(#"```[\s\S]*?```"#,        "0f766e", dark: "2dd4bf",  options: []),            // code block
+    makeRule(#"`[^`\n]+`"#,            "0f766e", dark: "2dd4bf"),                          // inline code
+    makeRule(#"\"[^\"\n]*\""#,         "059669", dark: "34d399"),                          // string
+    makeRule(#"^[-+]\s"#,              "2563eb", dark: "93c5fd",  bold: true),             // list marker
+    makeRule(#"^={1,6}\s.+$"#,         "1d4ed8", dark: "60a5fa",  bold: true),             // heading
+    makeRule(#"_[^_\n]+_"#,            "374151", dark: "cbd5e1",  italic: true),           // italic
+    makeRule(#"\*[^\*\n]+\*"#,         "111827", dark: "f1f5f9",  bold: true),             // bold
     makeRule(#"#(set|let|show|if|else|for|while|import|include|return)\b"#,
-             "7c3aed", bold: true),                                         // keyword
-    makeRule(#"#[a-zA-Z_][a-zA-Z0-9_]*"#, "0369a1"),                      // function
-    makeRule(#"@[a-zA-Z_][a-zA-Z0-9_:.-]*"#, "be185d"),                   // reference
+             "7c3aed", dark: "a78bfa",  bold: true),                                        // keyword
+    makeRule(#"#[a-zA-Z_][a-zA-Z0-9_]*"#, "0369a1", dark: "38bdf8"),                      // function
+    makeRule(#"@[a-zA-Z_][a-zA-Z0-9_:.-]*"#, "be185d", dark: "f472b6"),                   // reference
 ]
+
+private let adaptiveForeground = UIColor { tc in
+    tc.userInterfaceStyle == .dark ? UIColor(hex: "e2e8f0") : UIColor(hex: "1a1d2e")
+}
 
 private func buildHighlightedText(_ text: String) -> NSAttributedString {
     let ns   = text as NSString
@@ -47,7 +55,7 @@ private func buildHighlightedText(_ text: String) -> NSAttributedString {
     let result = NSMutableAttributedString(string: text)
     result.addAttributes([
         .font:            baseFont,
-        .foregroundColor: UIColor(hex: "1a1d2e"),
+        .foregroundColor: adaptiveForeground,
     ], range: full)
 
     for rule in tokenRules {
@@ -896,6 +904,7 @@ struct NoteEditorView: View {
         // Default title = domain (never the raw URL — // in content mode is a Typst line comment)
         var pageTitle = domain
         var pageDesc  = ""
+        var imagePath = ""
 
         if let (data, _) = try? await URLSession.shared.data(from: url) {
             let html = String(data: data, encoding: .utf8) ?? String(data: data, encoding: .isoLatin1) ?? ""
@@ -921,6 +930,21 @@ struct NoteEditorView: View {
             let metaDesc = firstCapture(#"<meta[^>]+name="description"[^>]+content="([^"]*)"[^>]*>"#)
                         ?? firstCapture(#"<meta[^>]+content="([^"]*)"[^>]+name="description"[^>]*>"#)
             pageDesc = (ogDesc ?? metaDesc ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+
+            // Fetch og:image and save as attachment (server mode only)
+            if let ogImageStr = firstCapture(#"<meta[^>]+property="og:image"[^>]+content="([^"]*)"[^>]*>"#)
+                             ?? firstCapture(#"<meta[^>]+content="([^"]*)"[^>]+property="og:image"[^>]*>"#),
+               let ogImageURL = URL(string: ogImageStr),
+               noteStore.syncMode == .server {
+                if let (imgData, imgResp) = try? await URLSession.shared.data(from: ogImageURL) {
+                    let ct = (imgResp as? HTTPURLResponse)?.value(forHTTPHeaderField: "Content-Type") ?? ""
+                    let ext = ct.contains("png") ? "png" : ct.contains("gif") ? "gif" : ct.contains("webp") ? "webp" : "jpg"
+                    let filename = "bm-\(UUID().uuidString).\(ext)"
+                    if let storedName = try? await noteStore.uploadAttachment(noteId: note.id, filename: filename, data: imgData) {
+                        imagePath = "attachments/\(note.id)/\(storedName)"
+                    }
+                }
+            }
         }
 
         // Escape text for Typst content mode: [], #, *, _ and // (line comment trigger)
@@ -933,16 +957,30 @@ struct NoteEditorView: View {
              .replacingOccurrences(of: "//", with: "/\u{200B}/") // zero-width space breaks // comment
         }
 
-        var lines = [
-            "#block(stroke: 0.5pt + luma(200), radius: 4pt, inset: (x: 10pt, y: 8pt), width: 100%)[",
-            "  #link(\"\(fullURL)\")[*\(esc(pageTitle))*] #h(1fr) #text(fill: luma(140), size: 9pt)[\(esc(domain))]",
-        ]
-        if !pageDesc.isEmpty {
-            lines.append("  \\")
-            lines.append("  #text(size: 9pt, fill: luma(80))[\(esc(pageDesc))]")
+        // Build text column: title → description → domain (Notion-style stacking)
+        var textParts = ["#link(\"\(fullURL)\")[*\(esc(pageTitle))*]"]
+        if !pageDesc.isEmpty { textParts.append("#text(size: 9pt, fill: luma(110))[\(esc(pageDesc))]") }
+        textParts.append("#text(size: 8pt, fill: luma(160))[\(esc(domain))]")
+        let textCol = textParts.joined(separator: "\\\n    ")
+
+        let snippet: String
+        if !imagePath.isEmpty {
+            snippet = [
+                "#block(stroke: 0.5pt + luma(215), radius: 6pt, inset: 10pt, width: 100%)[",
+                "  #grid(columns: (1fr, 88pt), gutter: 10pt, align: (left + top, right + top),",
+                "    [\(textCol)],",
+                "    [#box(radius: 4pt, clip: true)[#image(\"\(imagePath)\", width: 88pt, height: 66pt, fit: \"cover\")]],",
+                "  )",
+                "]",
+            ].joined(separator: "\n") + "\n"
+        } else {
+            snippet = [
+                "#block(stroke: 0.5pt + luma(215), radius: 6pt, inset: (x: 12pt, y: 10pt), width: 100%)[",
+                "  \(textCol)",
+                "]",
+            ].joined(separator: "\n") + "\n"
         }
-        lines.append("]")
-        controller.insert(lines.joined(separator: "\n") + "\n", replacingSlash: false)
+        controller.insert(snippet, replacingSlash: false)
     }
 
     private func handlePickedPhoto(_ item: PhotosPickerItem) async {

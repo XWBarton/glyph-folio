@@ -1,6 +1,6 @@
 {
   "name": "glyph-folio-desktop",
-  "version": "0.3.2",
+  "version": "0.3.3",
   "description": "Quick Typst note-taking with PDF export",
   "author": "Xavier Barton",
   "main": "out/main/index.js",
