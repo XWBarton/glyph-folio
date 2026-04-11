@@ -13,7 +13,7 @@ import type { AppSettings } from '../../preload/index'
 export default function App() {
   // ── State ────────────────────────────────────────────────────────────────────
   const {
-    notes, activeNote, isLoading,
+    notes, activeNote, isLoading, history,
     selectNote, updateBody, createNote, deleteNote, refreshNotes, flushSave
   } = useNotes()
 
@@ -147,6 +147,7 @@ export default function App() {
   // ── Create/delete ─────────────────────────────────────────────────────────────
   const handleCreate = useCallback(async () => {
     const note = await createNote()
+    setSearchOpen(false)
     return note
   }, [createNote])
 
@@ -184,17 +185,27 @@ export default function App() {
     return () => unsubs.forEach(fn => fn())
   }, [handleCreate, handleDelete, exportPdf, compile, activeNote])
 
-  // ── Cmd+K to open notes explorer ─────────────────────────────────────────────
+  // ── Cmd+K to open notes explorer, Cmd+1/2/3 for navigation history ──────────
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (e.key === 'k' && (e.metaKey || e.ctrlKey)) {
         e.preventDefault()
         setSearchOpen(v => !v)
+        return
+      }
+      if ((e.metaKey || e.ctrlKey) && ['1', '2', '3'].includes(e.key)) {
+        e.preventDefault()
+        const idx = parseInt(e.key) - 1
+        const targetId = history[idx]
+        if (targetId) {
+          const target = notes.find(n => n.id === targetId)
+          if (target) selectNote(target)
+        }
       }
     }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
-  }, [])
+  }, [history, notes, selectNote])
 
   // Open explorer on load if no note is selected
   useEffect(() => {
@@ -223,7 +234,7 @@ export default function App() {
       if (!dragging.current || !splitContainerRef.current) return
       const rect = splitContainerRef.current.getBoundingClientRect()
       const pct = ((e.clientX - rect.left) / rect.width) * 100
-      setSplitPct(Math.min(80, Math.max(20, pct)))
+      setSplitPct(Math.min(95, Math.max(5, pct)))
     }
     const onUp = () => { dragging.current = false }
     window.addEventListener('mousemove', onMove)
@@ -252,66 +263,75 @@ export default function App() {
         flex: 1, display: 'flex', overflow: 'hidden',
         padding: '10px', gap: 0,
       }}>
-        {/* Editor */}
-        <div style={{
-          width: `calc(${splitPct}% - 5px)`,
-          display: 'flex', overflow: 'visible', position: 'relative',
-          borderRadius: 'var(--radius)',
-          background: 'rgba(255,255,255,0.72)',
-          border: '1px solid var(--glass-border)',
-          boxShadow: 'var(--glass-shadow), inset 0 1px 0 rgba(255,255,255,0.95)',
-        }}>
-          {activeNote ? (
-            <NoteEditor
-              value={activeNote.body}
-              onChange={handleBodyChange}
-              tokenColors={colors}
-              fontSize={settings.fontSize}
-              spellCheckEnabled={spellCheckEnabled}
-              customDictionary={customDictionary}
-              onAddToDict={handleAddWord}
-              notes={notes}
-              onNavigate={handleNavigate}
-              noteId={activeNote.id}
-              onPickImage={handlePickImage}
-              onDropImage={handleDropImage}
-            />
-          ) : (
-            <EmptyState onOpen={() => setSearchOpen(true)} isLoading={isLoading} />
-          )}
-          <FontSizeControl
-            fontSize={settings.fontSize}
-            onChange={fs => handleSaveSettings({ fontSize: fs })}
-          />
-        </div>
-
-        {/* Divider */}
-        <div
-          onMouseDown={onMouseDown}
-          style={{
-            width: 10, flexShrink: 0, cursor: 'col-resize',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-          }}
-        >
+        {/* Editor — hidden when splitPct === 0 (preview fullscreen) */}
+        {splitPct > 0 && (
           <div style={{
-            width: 2, height: 48, borderRadius: 2,
-            background: 'rgba(255,255,255,0.7)',
-            boxShadow: '0 1px 4px rgba(0,0,0,0.1)',
-          }} />
-        </div>
+            width: splitPct >= 100 ? '100%' : `calc(${splitPct}% - 5px)`,
+            display: 'flex', overflow: 'visible', position: 'relative',
+            borderRadius: 'var(--radius)',
+            background: 'rgba(255,255,255,0.72)',
+            border: '1px solid var(--glass-border)',
+            boxShadow: 'var(--glass-shadow), inset 0 1px 0 rgba(255,255,255,0.95)',
+          }}>
+            <ExpandBtn title={splitPct >= 100 ? 'Restore split' : 'Fullscreen editor'} onClick={() => setSplitPct(v => v >= 100 ? 50 : 100)} />
+            {activeNote ? (
+              <NoteEditor
+                value={activeNote.body}
+                onChange={handleBodyChange}
+                tokenColors={colors}
+                fontSize={settings.fontSize}
+                spellCheckEnabled={spellCheckEnabled}
+                customDictionary={customDictionary}
+                onAddToDict={handleAddWord}
+                notes={notes}
+                onNavigate={handleNavigate}
+                noteId={activeNote.id}
+                onPickImage={handlePickImage}
+                onDropImage={handleDropImage}
+              />
+            ) : (
+              <EmptyState onOpen={() => setSearchOpen(true)} isLoading={isLoading} />
+            )}
+            <FontSizeControl
+              fontSize={settings.fontSize}
+              onChange={fs => handleSaveSettings({ fontSize: fs })}
+            />
+          </div>
+        )}
 
-        {/* Preview */}
-        <div style={{
-          flex: 1, display: 'flex', overflow: 'hidden', position: 'relative',
-          borderRadius: 'var(--radius)',
-          background: 'rgba(255,255,255,0.45)',
-          backdropFilter: 'blur(24px) saturate(180%)',
-          WebkitBackdropFilter: 'blur(24px) saturate(180%)',
-          border: '1px solid var(--glass-border)',
-          boxShadow: 'var(--glass-shadow), inset 0 1px 0 rgba(255,255,255,0.95)',
-        }}>
-          <PreviewPane pdfBytes={pdfBytes} error={error} isCompiling={isCompiling} />
-        </div>
+        {/* Divider — hidden when either pane is fullscreen */}
+        {splitPct > 0 && splitPct < 100 && (
+          <div
+            onMouseDown={onMouseDown}
+            onDoubleClick={() => setSplitPct(50)}
+            style={{
+              width: 10, flexShrink: 0, cursor: 'col-resize',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+            }}
+          >
+            <div style={{
+              width: 2, height: 48, borderRadius: 2,
+              background: 'rgba(255,255,255,0.7)',
+              boxShadow: '0 1px 4px rgba(0,0,0,0.1)',
+            }} />
+          </div>
+        )}
+
+        {/* Preview — hidden when splitPct === 100 (editor fullscreen) */}
+        {splitPct < 100 && (
+          <div style={{
+            flex: 1, display: 'flex', overflow: 'hidden', position: 'relative',
+            borderRadius: 'var(--radius)',
+            background: 'rgba(255,255,255,0.45)',
+            backdropFilter: 'blur(24px) saturate(180%)',
+            WebkitBackdropFilter: 'blur(24px) saturate(180%)',
+            border: '1px solid var(--glass-border)',
+            boxShadow: 'var(--glass-shadow), inset 0 1px 0 rgba(255,255,255,0.95)',
+          }}>
+            <ExpandBtn title={splitPct <= 0 ? 'Restore split' : 'Fullscreen preview'} onClick={() => setSplitPct(v => v <= 0 ? 50 : 0)} />
+            <PreviewPane pdfBytes={pdfBytes} error={error} isCompiling={isCompiling} />
+          </div>
+        )}
       </div>
 
       <SearchModal
@@ -363,6 +383,27 @@ function FontSizeControl({ fontSize, onChange }: { fontSize: number; onChange: (
         style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--subtext)', fontSize: 14, lineHeight: 1, padding: '0 2px', fontFamily: 'inherit' }}
       >+</button>
     </div>
+  )
+}
+
+function ExpandBtn({ onClick, title }: { onClick: () => void; title: string }) {
+  const [hovered, setHovered] = React.useState(false)
+  return (
+    <button
+      onClick={onClick}
+      title={title}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      style={{
+        position: 'absolute', top: 8, right: 8, zIndex: 10,
+        background: 'transparent', border: 'none', cursor: 'pointer',
+        padding: 4, borderRadius: 4,
+        opacity: hovered ? 1 : 0.5,
+        color: 'var(--subtext)',
+        fontSize: 14, lineHeight: 1,
+        transition: 'opacity 0.15s',
+      }}
+    >⤢</button>
   )
 }
 

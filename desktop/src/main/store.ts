@@ -3,7 +3,7 @@ import { join } from 'path'
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'fs'
 
 export interface AppSettings {
-  syncMode: 'icloud' | 'server' | 'local'
+  syncMode: 'server' | 'local'
   serverUrl: string
   notesDir: string
   fontSize: number

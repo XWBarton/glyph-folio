@@ -104,7 +104,7 @@ class EditorController: ObservableObject {
         tv.replace(range, withText: text)
     }
 
-    /// Replaces the [[ typed before the cursor with [[title]].
+    /// Replaces the [[ typed before the cursor with [[title]], consuming auto-closed ]] if present.
     func insertWikiLink(title: String) {
         guard let tv = textView else { return }
         let cursorLoc = tv.selectedRange.location
@@ -112,8 +112,14 @@ class EditorController: ObservableObject {
         let searchRange = NSRange(location: 0, length: cursorLoc)
         let bracketRange = ns.range(of: "[[", options: .backwards, range: searchRange)
         guard bracketRange.location != NSNotFound else { return }
+        // If the editor auto-closed [[ → [[]], the ]] sits right after the cursor — consume it
+        var endLoc = cursorLoc
+        if cursorLoc + 2 <= ns.length,
+           ns.substring(with: NSRange(location: cursorLoc, length: 2)) == "]]" {
+            endLoc = cursorLoc + 2
+        }
         guard let start = tv.position(from: tv.beginningOfDocument, offset: bracketRange.location),
-              let end   = tv.position(from: tv.beginningOfDocument, offset: cursorLoc),
+              let end   = tv.position(from: tv.beginningOfDocument, offset: endLoc),
               let range = tv.textRange(from: start, to: end) else { return }
         tv.replace(range, withText: "[[\(title)]]")
     }
@@ -395,6 +401,28 @@ struct TypstEditor: UIViewRepresentable {
                 tv.delegate?.textViewDidChange?(tv)
                 return false
             }
+
+            // Table row continuation: line is one or more [cell] cells separated by commas
+            let trimmed = currentLine.trimmingCharacters(in: .whitespaces)
+            if !trimmed.isEmpty,
+               let regex = try? NSRegularExpression(pattern: #"^(\[[^\]]*\],?\s*)+"#),
+               let _ = regex.firstMatch(in: trimmed, range: NSRange(trimmed.startIndex..., in: trimmed)) {
+                let cellRegex = try? NSRegularExpression(pattern: #"\[[^\]]*\]"#)
+                let cellCount = cellRegex?.numberOfMatches(in: trimmed, range: NSRange(trimmed.startIndex..., in: trimmed)) ?? 0
+                if cellCount > 0 {
+                    let newRow = (Array(repeating: "[]", count: cellCount).joined(separator: ", ")) + ","
+                    let insertion = "\n\(newRow)"
+                    let mns = NSMutableString(string: tv.text)
+                    mns.insert(insertion, at: cursor)
+                    tv.text = mns as String
+                    // Park cursor inside the first [] of the new row
+                    let newPos = cursor + 2  // after "\n["
+                    tv.selectedRange = NSRange(location: min(newPos, mns.length), length: 0)
+                    tv.delegate?.textViewDidChange?(tv)
+                    return false
+                }
+            }
+
             return true
         }
 
@@ -524,6 +552,7 @@ private let allSlashCommands: [SlashCommand] = [
     .init(id: "tags",      category: "Meta",      icon: "tag",                                     name: "Tags",           description: "Add tags to this note",    syntax: "// @tags: "),
     .init(id: "datetime",  category: "Meta",      icon: "calendar.clock",                          name: "Date & Time",    description: "Insert current date and time",    syntax: ""),
     .init(id: "image",     category: "Media",     icon: "photo",                                   name: "Image",          description: "Insert image from photo library", syntax: ""),
+    .init(id: "bookmark",  category: "Media",     icon: "bookmark",                                name: "Web Bookmark",   description: "Fetch page title & description from URL", syntax: ""),
 ]
 
 // ── Slash command palette ─────────────────────────────────────────────────────
@@ -750,6 +779,8 @@ struct NoteEditorView: View {
     @State private var isUploadingImage = false
     @State private var imageUploadError: String? = nil
     @State private var tagSuggestions: [String] = []
+    @State private var showBookmarkInput = false
+    @State private var bookmarkURL = ""
 
     var body: some View {
         ZStack(alignment: .bottom) {
@@ -798,6 +829,11 @@ struct NoteEditorView: View {
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
                         showImagePicker = true
                     }
+                } else if cmd.id == "bookmark" {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+                        bookmarkURL = ""
+                        showBookmarkInput = true
+                    }
                 } else if cmd.id == "datetime" {
                     let now = Date()
                     let datePart = now.formatted(.dateTime.month(.wide).day().year())
@@ -834,8 +870,79 @@ struct NoteEditorView: View {
         } message: {
             Text(imageUploadError ?? "")
         }
+        .alert("Web Bookmark", isPresented: $showBookmarkInput) {
+            TextField("https://example.com", text: $bookmarkURL)
+                .keyboardType(.URL)
+                .autocorrectionDisabled()
+                .textInputAutocapitalization(.never)
+            Button("Fetch") {
+                let url = bookmarkURL.trimmingCharacters(in: .whitespaces)
+                guard !url.isEmpty else { return }
+                Task { await handleBookmark(url) }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Enter a URL to create a bookmark card")
+        }
         .onAppear { localBody = note.body }
         .onChange(of: note.id) { _, _ in localBody = note.body }
+    }
+
+    private func handleBookmark(_ rawURL: String) async {
+        let fullURL = rawURL.hasPrefix("http") ? rawURL : "https://\(rawURL)"
+        guard let url = URL(string: fullURL) else { return }
+        let domain = url.host?.replacingOccurrences(of: "www.", with: "") ?? fullURL
+
+        // Default title = domain (never the raw URL — // in content mode is a Typst line comment)
+        var pageTitle = domain
+        var pageDesc  = ""
+
+        if let (data, _) = try? await URLSession.shared.data(from: url) {
+            let html = String(data: data, encoding: .utf8) ?? String(data: data, encoding: .isoLatin1) ?? ""
+            let ns = html as NSString
+            let len = NSRange(location: 0, length: ns.length)
+
+            func firstCapture(_ pattern: String) -> String? {
+                guard let re = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive, .dotMatchesLineSeparators]),
+                      let m = re.firstMatch(in: html, range: len),
+                      m.numberOfRanges > 1 else { return nil }
+                let r = m.range(at: 1)
+                guard r.location != NSNotFound else { return nil }
+                return ns.substring(with: r)
+            }
+
+            let ogTitle  = firstCapture(#"<meta[^>]+property="og:title"[^>]+content="([^"]*)"[^>]*>"#)
+                        ?? firstCapture(#"<meta[^>]+content="([^"]*)"[^>]+property="og:title"[^>]*>"#)
+            let htmlTitle = firstCapture(#"<title>([^<]+)</title>"#)
+            pageTitle = (ogTitle ?? htmlTitle ?? fullURL).trimmingCharacters(in: .whitespacesAndNewlines)
+
+            let ogDesc   = firstCapture(#"<meta[^>]+property="og:description"[^>]+content="([^"]*)"[^>]*>"#)
+                        ?? firstCapture(#"<meta[^>]+content="([^"]*)"[^>]+property="og:description"[^>]*>"#)
+            let metaDesc = firstCapture(#"<meta[^>]+name="description"[^>]+content="([^"]*)"[^>]*>"#)
+                        ?? firstCapture(#"<meta[^>]+content="([^"]*)"[^>]+name="description"[^>]*>"#)
+            pageDesc = (ogDesc ?? metaDesc ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+
+        // Escape text for Typst content mode: [], #, *, _ and // (line comment trigger)
+        func esc(_ s: String) -> String {
+            s.replacingOccurrences(of: "[",  with: "\\[")
+             .replacingOccurrences(of: "]",  with: "\\]")
+             .replacingOccurrences(of: "#",  with: "\\#")
+             .replacingOccurrences(of: "*",  with: "\\*")
+             .replacingOccurrences(of: "_",  with: "\\_")
+             .replacingOccurrences(of: "//", with: "/\u{200B}/") // zero-width space breaks // comment
+        }
+
+        var lines = [
+            "#block(stroke: 0.5pt + luma(200), radius: 4pt, inset: (x: 10pt, y: 8pt), width: 100%)[",
+            "  #link(\"\(fullURL)\")[*\(esc(pageTitle))*] #h(1fr) #text(fill: luma(140), size: 9pt)[\(esc(domain))]",
+        ]
+        if !pageDesc.isEmpty {
+            lines.append("  \\")
+            lines.append("  #text(size: 9pt, fill: luma(80))[\(esc(pageDesc))]")
+        }
+        lines.append("]")
+        controller.insert(lines.joined(separator: "\n") + "\n", replacingSlash: false)
     }
 
     private func handlePickedPhoto(_ item: PhotosPickerItem) async {

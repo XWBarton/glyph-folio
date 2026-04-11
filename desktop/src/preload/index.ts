@@ -27,7 +27,7 @@ export interface SearchResult extends NoteMeta {
 }
 
 export interface AppSettings {
-  syncMode: 'icloud' | 'server' | 'local'
+  syncMode: 'server' | 'local'
   serverUrl: string
   notesDir: string
   fontSize: number
@@ -41,7 +41,7 @@ export interface FolioAPI {
   notesList(): Promise<NoteMeta[]>
   notesRead(filePath: string): Promise<Note | null>
   notesWrite(filePath: string, body: string): Promise<{ success: boolean; error?: string }>
-  notesUpsert(id: string, body: string): Promise<{ success: boolean; error?: string }>
+  notesUpsert(id: string, body: string, mtime?: string): Promise<{ success: boolean; error?: string }>
   notesDelete(filePath: string): Promise<{ success: boolean; error?: string }>
   notesCreate(title?: string): Promise<Note>
   notesExportPdf(pdfBytes: number[], suggestedName: string): Promise<{ success: boolean; error?: string }>
@@ -78,7 +78,7 @@ const api: FolioAPI = {
   notesList: () => ipcRenderer.invoke('notes:list'),
   notesRead: (filePath) => ipcRenderer.invoke('notes:read', filePath),
   notesWrite: (filePath, body) => ipcRenderer.invoke('notes:write', filePath, body),
-  notesUpsert: (id, body) => ipcRenderer.invoke('notes:upsert', id, body),
+  notesUpsert: (id, body, mtime) => ipcRenderer.invoke('notes:upsert', id, body, mtime),
   notesDelete: (filePath) => ipcRenderer.invoke('notes:delete', filePath),
   notesCreate: (title) => ipcRenderer.invoke('notes:create', title),
   notesExportPdf: (pdfBytes, name) => ipcRenderer.invoke('notes:export-pdf', pdfBytes, name),

@@ -56,18 +56,18 @@ final class GraphSimulation: ObservableObject {
             }
 
         case .tags:
-            // Bipartite: note nodes (outer ring) + tag nodes (inner ring)
+            // All nodes (notes + tags) spread uniformly on the same ring
+            let allTags = Array(Set(notes.flatMap(\.tags))).sorted()
+            let total = n + allTags.count
             let noteNodes: [Node] = notes.enumerated().map { i, note in
-                let angle = 2 * .pi * Double(i) / Double(n)
+                let angle = 2 * .pi * Double(i) / Double(max(1, total))
                 return Node(id: note.id, title: note.title, type: .note,
                             x: cx + r * cos(angle), y: cy + r * sin(angle))
             }
-            let allTags = Array(Set(notes.flatMap(\.tags))).sorted()
-            let tr = r * 0.30
             let tagNodes: [Node] = allTags.enumerated().map { i, tag in
-                let angle = 2 * .pi * Double(i) / Double(max(1, allTags.count))
+                let angle = 2 * .pi * Double(n + i) / Double(max(1, total))
                 return Node(id: "tag:\(tag)", title: tag, type: .tag,
-                            x: cx + tr * cos(angle), y: cy + tr * sin(angle))
+                            x: cx + r * cos(angle), y: cy + r * sin(angle))
             }
             nodes = noteNodes + tagNodes
 
@@ -89,6 +89,16 @@ final class GraphSimulation: ObservableObject {
     }
 
     func stop() { cancellable = nil }
+
+    func scatter(size: CGSize) {
+        let pad = 60.0
+        for i in nodes.indices {
+            nodes[i].x  = Double.random(in: pad...(size.width  - pad))
+            nodes[i].y  = Double.random(in: pad...(size.height - pad))
+            nodes[i].vx = Double.random(in: -4...4)
+            nodes[i].vy = Double.random(in: -4...4)
+        }
+    }
 
     func startDrag(nodeId: String) {
         draggedNodeId = nodeId
@@ -114,16 +124,13 @@ final class GraphSimulation: ObservableObject {
     private func step(size: CGSize) {
         guard nodes.count > 1 else { return }
 
-        let repulsion  = 10_000.0
-        let springK    = 0.06
-        let springLen  = 160.0
-        let tagSpringLen = 90.0   // shorter target distance for note→tag edges
-        let gravity    = 0.04
-        let tagGravity = 0.10     // stronger pull toward center for tag nodes
-        let damping    = 0.85
-        let minSep     = 28.0     // minimum centre-to-centre distance before collision force kicks in
+        let repulsion = 10_000.0
+        let springK   = 0.05
+        let springLen = 150.0
+        let gravity   = 0.06
+        let damping   = 0.88
+        let minSep    = 38.0
         let cx = size.width / 2, cy = size.height / 2
-        let perimeter  = min(size.width, size.height) * 0.33  // target radius for note nodes in tags lens
 
         var fx = [Double](repeating: 0, count: nodes.count)
         var fy = [Double](repeating: 0, count: nodes.count)
@@ -157,58 +164,16 @@ final class GraphSimulation: ObservableObject {
             let dx = nodes[j].x - nodes[i].x
             let dy = nodes[j].y - nodes[i].y
             let d  = max(sqrt(dx * dx + dy * dy), 0.001)
-            let isTagEdge = nodes[i].type == .tag || nodes[j].type == .tag
-            let len = isTagEdge ? tagSpringLen : springLen
-            let stretch = d - len
+            let stretch = d - springLen
             let f = springK * stretch
             fx[i] += f * dx / d;  fy[i] += f * dy / d
             fx[j] -= f * dx / d;  fy[j] -= f * dy / d
         }
 
-        // Cluster attraction: notes that share a tag pull toward each other
-        // so each tag's note-cluster stays physically grouped, minimising edge crossings
-        let clusterK = 0.015
-        let clusterLen = 120.0
-        for i in nodes.indices where nodes[i].type == .note {
-            for j in (i + 1) ..< nodes.count where nodes[j].type == .note {
-                // Check if these two notes share any tag edge (both connect to the same tag node)
-                let tagsI = edges.compactMap { (a, b) -> String? in
-                    if a == nodes[i].id, b.hasPrefix("tag:") { return b }
-                    if b == nodes[i].id, a.hasPrefix("tag:") { return a }
-                    return nil
-                }
-                let tagsJ = Set(edges.compactMap { (a, b) -> String? in
-                    if a == nodes[j].id, b.hasPrefix("tag:") { return b }
-                    if b == nodes[j].id, a.hasPrefix("tag:") { return a }
-                    return nil
-                })
-                guard tagsI.contains(where: { tagsJ.contains($0) }) else { continue }
-                let dx = nodes[j].x - nodes[i].x
-                let dy = nodes[j].y - nodes[i].y
-                let d  = max(sqrt(dx * dx + dy * dy), 0.001)
-                let stretch = d - clusterLen
-                let f = clusterK * stretch
-                fx[i] += f * dx / d;  fy[i] += f * dy / d
-                fx[j] -= f * dx / d;  fy[j] -= f * dy / d
-            }
-        }
-
-        // Type-aware gravity: tags pulled strongly to center, notes pushed toward perimeter
+        // Uniform gentle gravity toward center — keeps nodes from drifting off screen
         for i in nodes.indices {
-            if nodes[i].type == .tag {
-                fx[i] += tagGravity * (cx - nodes[i].x)
-                fy[i] += tagGravity * (cy - nodes[i].y)
-            } else {
-                // Soft radial push: nudge note nodes toward the perimeter ring
-                let dx = nodes[i].x - cx
-                let dy = nodes[i].y - cy
-                let dist = max(sqrt(dx * dx + dy * dy), 0.001)
-                let radialForce = gravity * (perimeter - dist) / perimeter
-                fx[i] += gravity * (cx - nodes[i].x)
-                fy[i] += gravity * (cy - nodes[i].y)
-                fx[i] -= radialForce * dx / dist
-                fy[i] -= radialForce * dy / dist
-            }
+            fx[i] += gravity * (cx - nodes[i].x)
+            fy[i] += gravity * (cy - nodes[i].y)
         }
 
         // Integrate
@@ -230,6 +195,7 @@ struct GraphView: View {
     var lens: GraphLens = .links
     let onSelect: (Note) -> Void
 
+    @Environment(\.colorScheme) private var colorScheme
     @ObservedObject private var settings = AppSettings.shared
     @StateObject private var sim = GraphSimulation()
     @State private var size: CGSize = .zero
@@ -312,7 +278,9 @@ struct GraphView: View {
                         )
                         ctx.fill(
                             RoundedRectangle(cornerRadius: 3).path(in: bgRect),
-                            with: .color(.white.opacity(0.82))
+                            with: .color(colorScheme == .dark
+                                ? Color.black.opacity(0.70)
+                                : Color.white.opacity(0.82))
                         )
                         ctx.draw(label, at: labelPt)
                       }
@@ -413,6 +381,9 @@ struct GraphView: View {
                 sim.stop()
                 sim.reset(notes: notes, lens: newLens, size: size)
                 sim.start(size: size)
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .deviceDidShake)) { _ in
+                sim.scatter(size: size)
             }
         }
     }

@@ -58,13 +58,15 @@ struct Note: Identifiable, Codable, Equatable {
     }
 
     static func extractTitle(from body: String, id: String) -> String {
-        if let match = body.range(of: #"^={1,6}\s+(.+)$"#, options: [.regularExpression, .anchored]) {
-            let line = String(body[match])
-            if let headingMatch = line.range(of: #"(?<=^={1,6}\s).+"#, options: .regularExpression) {
-                return String(line[headingMatch]).trimmingCharacters(in: .whitespaces)
+        // Explicit override: // = Title (commented-out heading, not rendered in PDF)
+        for line in body.components(separatedBy: "\n") {
+            if let r = line.range(of: #"^//\s*=\s+(.+)$"#, options: .regularExpression) {
+                let title = line[r].replacingOccurrences(of: #"^//\s*=\s+"#, with: "", options: .regularExpression)
+                    .trimmingCharacters(in: .whitespaces)
+                if !title.isEmpty { return title }
             }
         }
-        // also try non-anchored first heading
+        // First Typst heading (= Title)
         if let line = body.components(separatedBy: "\n").first(where: { $0.hasPrefix("=") }) {
             let title = line.drop(while: { $0 == "=" }).trimmingCharacters(in: .whitespaces)
             if !title.isEmpty { return title }

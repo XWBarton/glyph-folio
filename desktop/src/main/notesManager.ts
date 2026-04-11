@@ -1,7 +1,7 @@
 import { app, dialog } from 'electron'
 import {
   readdirSync, readFileSync, writeFileSync, unlinkSync,
-  existsSync, mkdirSync, statSync, rmSync, copyFileSync
+  existsSync, mkdirSync, statSync, rmSync, copyFileSync, utimesSync
 } from 'fs'
 import { join, basename, extname } from 'path'
 import chokidar, { FSWatcher } from 'chokidar'
@@ -39,18 +39,6 @@ export function resolveNotesDir(): string {
   const store = getStore()
   const syncMode = store.get('syncMode', 'local') as string
 
-  if (syncMode === 'icloud') {
-    const icloudBase = join(
-      app.getPath('home'),
-      'Library', 'Mobile Documents', 'com~apple~CloudDocs', 'GlyphFolio'
-    )
-    if (existsSync(icloudBase)) return icloudBase
-    try {
-      mkdirSync(icloudBase, { recursive: true })
-      return icloudBase
-    } catch {}
-  }
-
   const customDir = store.get('notesDir', '') as string
   if (customDir && existsSync(customDir)) return customDir
 
@@ -64,6 +52,9 @@ export function resolveNotesDir(): string {
 // ── Title extraction ─────────────────────────────────────────────────────────
 
 function extractTitle(body: string, id: string): string {
+  // Explicit override: // = Title (commented-out heading, not rendered in PDF)
+  const override = body.match(/^\/\/\s*=\s+(.+)$/m)
+  if (override) return override[1].trim()
   const match = body.match(/^={1,6}\s+(.+)$/m)
   if (match) return match[1].trim()
   // Fall back to humanised filename stem (strip date prefix if present)
@@ -132,10 +123,15 @@ export function readNote(filePath: string): Note | null {
 }
 
 // Write a note by ID (used for sync — creates file if it doesn't exist)
-export function upsertNote(id: string, body: string): { success: boolean; error?: string } {
+export function upsertNote(id: string, body: string, mtime?: string): { success: boolean; error?: string } {
   try {
     const dir = resolveNotesDir()
-    writeFileSync(join(dir, `${id}.typ`), body, 'utf8')
+    const filePath = join(dir, `${id}.typ`)
+    writeFileSync(filePath, body, 'utf8')
+    if (mtime) {
+      const d = new Date(mtime)
+      utimesSync(filePath, d, d)
+    }
     return { success: true }
   } catch (e) {
     return { success: false, error: String(e) }

@@ -148,7 +148,7 @@ export function SettingsPanel({
           {/* ── Sync ── */}
           <Card label="Sync">
             <div style={{ display: 'flex', gap: 4, marginBottom: 10 }}>
-              {(['local', 'icloud', 'server'] as const).map(mode => (
+              {(['local', 'server'] as const).map(mode => (
                 <button
                   key={mode}
                   onClick={() => setSyncMode(mode)}
@@ -167,7 +167,7 @@ export function SettingsPanel({
                     fontFamily: 'inherit',
                   }}
                 >
-                  {mode === 'icloud' ? 'iCloud' : mode === 'server' ? 'Server' : 'Local'}
+                  {mode === 'server' ? 'Server' : 'Local'}
                 </button>
               ))}
             </div>

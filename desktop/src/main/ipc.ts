@@ -48,8 +48,8 @@ export function registerIpcHandlers(): void {
     return writeNote(filePath, body)
   })
 
-  ipcMain.handle('notes:upsert', async (_event, id: string, body: string) => {
-    return upsertNote(id, body)
+  ipcMain.handle('notes:upsert', async (_event, id: string, body: string, mtime?: string) => {
+    return upsertNote(id, body, mtime)
   })
 
   ipcMain.handle('sync:get-base', (_event, noteId: string) => getBase(noteId))

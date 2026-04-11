@@ -1,5 +1,6 @@
 import Foundation
 import Combine
+import UIKit
 
 enum SyncStatus {
     case synced, syncing, offline
@@ -151,6 +152,8 @@ class NoteStore: ObservableObject {
         guard var n = activeNote, n.id == note.id else { return }
         if let pending = pendingBody { n.body = pending; pendingBody = nil }
         let oldTitle = lastSavedTitles[n.id]
+        let bgTask = UIApplication.shared.beginBackgroundTask(withName: "glyph-save") { }
+        defer { UIApplication.shared.endBackgroundTask(bgTask) }
         do {
             try await provider.writeNote(n)
             if syncMode == .server { syncStatus = .synced }
@@ -218,6 +221,8 @@ class NoteStore: ObservableObject {
 
     /// Upload an image to the sync provider. Returns the sanitised filename stored by the server.
     func uploadAttachment(noteId: String, filename: String, data: Data) async throws -> String {
+        let bgTask = UIApplication.shared.beginBackgroundTask(withName: "glyph-upload") { }
+        defer { UIApplication.shared.endBackgroundTask(bgTask) }
         return try await provider.uploadAttachment(noteId: noteId, filename: filename, data: data)
     }
 
