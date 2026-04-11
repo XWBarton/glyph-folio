@@ -1,5 +1,7 @@
 import { useState, useCallback, useEffect, useRef } from 'react'
 
+// Navigation history: array of note IDs, most recently visited first (excluding current)
+
 export interface NoteMeta {
   id: string
   title: string
@@ -28,6 +30,7 @@ export function useNotes() {
     activeNote: null,
     isLoading: true
   })
+  const [history, setHistory] = useState<string[]>([])
 
   const stateRef = useRef(state)
   stateRef.current = state
@@ -89,13 +92,17 @@ export function useNotes() {
 
   const selectNote = useCallback(async (meta: NoteMeta) => {
     // Flush pending save for current note before switching
+    const active = stateRef.current.activeNote
     if (dirtyRef.current) {
-      const active = stateRef.current.activeNote
       if (active) {
         dirtyRef.current = false
         if (timerRef.current) clearTimeout(timerRef.current)
         await window.api.notesWrite(active.filePath, active.body)
       }
+    }
+    // Push previous note to history (most recent first, cap at 10, skip if same)
+    if (active && active.id !== meta.id) {
+      setHistory(prev => [active.id, ...prev.filter(id => id !== meta.id)].slice(0, 10))
     }
     const note = await window.api.notesRead(meta.filePath)
     if (note) setState(s => ({ ...s, activeNote: note }))
@@ -107,8 +114,9 @@ export function useNotes() {
     dirtyRef.current = true
     setState(s => {
       if (!s.activeNote) return s
-      const m = body.match(/^={1,6}\s+(.+)$/m)
-      const title = m ? m[1].trim() : s.activeNote.title
+      const override = body.match(/^\/\/\s*=\s+(.+)$/m)
+      const heading  = body.match(/^={1,6}\s+(.+)$/m)
+      const title = override ? override[1].trim() : heading ? heading[1].trim() : s.activeNote.title
       return { ...s, activeNote: { ...s.activeNote, body, title } }
     })
     scheduleAutoSave()
@@ -152,6 +160,7 @@ export function useNotes() {
     notes: state.notes,
     activeNote: state.activeNote,
     isLoading: state.isLoading,
+    history,
     selectNote,
     updateBody,
     createNote,

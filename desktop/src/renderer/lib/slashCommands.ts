@@ -44,6 +44,9 @@ export const SLASH_COMMANDS: SlashCommand[] = [
   // Checklist
   { id: 'checklist', label: 'Checklist', description: 'Interactive checkbox list (auto-imports cheq)', icon: '✓', category: 'structure', snippet: '- [ ] ${1:item}\n- [ ] ${2:item}\n- [ ] $0', keywords: ['checklist', 'check', 'todo', 'task', 'checkbox'] },
 
+  // Bookmark
+  { id: 'bookmark', label: 'Web Bookmark', description: 'Fetch page title & description from URL', icon: '🔖', category: 'media', snippet: '', keywords: ['bookmark', 'url', 'link', 'web', 'website', 'page'] },
+
   // Advanced
   { id: 'set-text', label: 'Set font', description: '#set text(…)', icon: 'Aa', category: 'advanced', snippet: '#set text(font: "${1:New Computer Modern}", size: ${2:11}pt)\n$0', keywords: ['font', 'text', 'set', 'size'] },
   { id: 'set-page', label: 'Set page', description: '#set page(…)', icon: '□', category: 'advanced', snippet: '#set page(margin: ${1:1.5cm}, paper: "${2:a4}")\n$0', keywords: ['page', 'margin', 'paper', 'set'] },

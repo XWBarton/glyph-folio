@@ -75,16 +75,20 @@ export function PreviewPane({ pdfBytes, error, isCompiling }: Props) {
             style={zoomBtnStyle(zoomIdx === 0)}
             title="Zoom out"
           >−</button>
-          <span style={{
-            fontSize: 11,
-            color: 'var(--subtext)',
-            minWidth: 34,
-            textAlign: 'center',
-            userSelect: 'none',
-            letterSpacing: '-0.01em',
-          }}>
+          <button
+            onClick={() => setZoomIdx(2)}
+            title="Reset to Fit"
+            style={{
+              background: 'transparent', border: 'none', borderRadius: 6,
+              minWidth: 34, height: 24,
+              fontSize: 11, color: 'var(--subtext)',
+              textAlign: 'center', userSelect: 'none',
+              letterSpacing: '-0.01em', cursor: 'pointer',
+              padding: '0 4px',
+            }}
+          >
             {zoomLabel(zoom)}
-          </span>
+          </button>
           <button
             onClick={() => setZoomIdx(i => Math.min(ZOOM_LEVELS.length - 1, i + 1))}
             disabled={zoomIdx === ZOOM_LEVELS.length - 1}

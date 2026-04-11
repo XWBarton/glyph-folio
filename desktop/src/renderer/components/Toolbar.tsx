@@ -135,7 +135,7 @@ export function Toolbar({
 }
 
 function SyncModePill({ mode, status }: { mode: string; status: string }) {
-  const modeLabel = mode === 'icloud' ? 'iCloud' : mode === 'server' ? 'Server' : 'Local'
+  const modeLabel = mode === 'server' ? 'Server' : 'Local'
   const statusLabel: Record<string, string> = { syncing: 'Syncing', synced: 'Synced', offline: 'Offline' }
   const extra = statusLabel[status]
 

@@ -124,7 +124,7 @@ export function useServerSync(serverUrl: string, enabled: boolean, authToken?: s
             const r = await fetch(`${base}/api/notes/${encodeURIComponent(sn.id)}`, { headers })
             if (!r.ok) return
             const remote = await r.json() as { id: string; body: string }
-            await window.api.notesUpsert(remote.id, remote.body)
+            await window.api.notesUpsert(remote.id, remote.body, sn.modifiedAt)
             await window.api.syncSetBase(sn.id, remote.body)
           })())
           continue
@@ -158,8 +158,8 @@ export function useServerSync(serverUrl: string, enabled: boolean, authToken?: s
               await window.api.syncSetBase(sn.id, merged)
               if (hasConflicts) console.warn(`[sync] Conflict markers inserted in: ${sn.id}`)
             } else {
-              // No local changes — safe to overwrite
-              await window.api.notesUpsert(sn.id, remote.body)
+              // No local changes — safe to overwrite, restore server mtime to keep chronology stable
+              await window.api.notesUpsert(sn.id, remote.body, sn.modifiedAt)
               await window.api.syncSetBase(sn.id, remote.body)
             }
           })())

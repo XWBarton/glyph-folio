@@ -8,6 +8,7 @@ import { buildMonacoTheme, type TokenColors } from '../lib/tokenColors'
 import { filterCommands, type SlashCommand } from '../lib/slashCommands'
 import { SlashCommandPalette } from './SlashCommandPalette'
 import { WikiLinkPalette } from './WikiLinkPalette'
+import { TagPalette } from './TagPalette'
 import { FindReplaceModal } from './FindReplaceModal'
 import { SpellSuggestions } from './SpellSuggestions'
 import { useSpellCheck } from '../hooks/useSpellCheck'
@@ -48,6 +49,11 @@ interface PaletteState {
 interface WikiPaletteState {
   open: boolean; x: number; y: number
   notes: NoteMeta[]; selectedIndex: number
+}
+
+interface TagPaletteState {
+  open: boolean; x: number; y: number
+  tags: string[]; selectedIndex: number
 }
 
 interface Props {
@@ -101,6 +107,15 @@ export function NoteEditor({
   const wikiPaletteRef   = useRef(wikiPalette)
   wikiPaletteRef.current = wikiPalette
   const wikiPosRef       = useRef<{ lineNumber: number; column: number } | null>(null)
+
+  const [tagPalette, setTagPalette] = useState<TagPaletteState>({ open: false, x: 0, y: 0, tags: [], selectedIndex: 0 })
+  const tagPaletteRef   = useRef(tagPalette)
+  tagPaletteRef.current = tagPalette
+  const tagPosRef       = useRef<{ lineNumber: number; column: number } | null>(null)
+
+  const [bookmarkOpen, setBookmarkOpen] = useState(false)
+  const [bookmarkUrl, setBookmarkUrl] = useState('')
+  const bookmarkSlashRef = useRef<{ sl: number; sc: number; el: number; ec: number } | null>(null)
 
   const editorRef    = useRef<editor.IStandaloneCodeEditor | null>(null)
   const containerRef = useRef<HTMLDivElement>(null)
@@ -191,6 +206,13 @@ export function NoteEditor({
       return
     }
 
+    if (cmd.id === 'bookmark') {
+      bookmarkSlashRef.current = { sl, sc, el, ec }
+      setBookmarkUrl('')
+      setBookmarkOpen(true)
+      return
+    }
+
     if (cmd.id === 'checklist') {
       // Delete the /checklist trigger, inject import below // @tags: if needed, insert item at cursor
       setTimeout(() => {
@@ -244,6 +266,73 @@ export function NoteEditor({
     setWikiPalette(p => ({ ...p, open: false }))
   }, [])
 
+  const closeTagPalette = useCallback(() => {
+    tagPosRef.current = null
+    setTagPalette(p => ({ ...p, open: false }))
+  }, [])
+
+  const insertTag = useCallback((tag: string) => {
+    const ed = editorRef.current; const pos = tagPosRef.current
+    if (!ed || !pos) return
+    const cur = ed.getPosition(); if (!cur) return
+    tagPosRef.current = null
+    setTagPalette(p => ({ ...p, open: false }))
+    ed.executeEdits('tag-insert', [{
+      range: new monaco.Range(pos.lineNumber, pos.column, cur.lineNumber, cur.column),
+      text: tag
+    }])
+    ed.setPosition({ lineNumber: pos.lineNumber, column: pos.column + tag.length })
+    ed.focus()
+  }, [])
+
+  const submitBookmark = useCallback(async (rawUrl: string) => {
+    setBookmarkOpen(false)
+    const ed = editorRef.current; const slash = bookmarkSlashRef.current
+    if (!ed || !rawUrl.trim()) { ed?.focus(); return }
+    const { sl, sc, el, ec } = slash!
+    bookmarkSlashRef.current = null
+
+    // Delete the slash trigger text
+    ed.executeEdits('slash-bookmark', [{ range: new monaco.Range(sl, sc, el, ec), text: '' }])
+
+    const fullUrl = /^https?:\/\//i.test(rawUrl) ? rawUrl : `https://${rawUrl}`
+    let domain = fullUrl, title = '', description = ''
+    try { domain = new URL(fullUrl).hostname.replace(/^www\./, '') } catch {}
+    // Default title = domain (never the raw URL — // in content mode is a Typst line comment)
+    title = domain
+    try {
+      const html = await fetch(fullUrl).then(r => r.text())
+      const doc = new DOMParser().parseFromString(html, 'text/html')
+      const ogTitle = doc.querySelector('meta[property="og:title"]')?.getAttribute('content')
+      const ogDesc  = doc.querySelector('meta[property="og:description"]')?.getAttribute('content')
+      const metaDesc = doc.querySelector('meta[name="description"]')?.getAttribute('content')
+      title = (ogTitle || doc.title || domain).trim()
+      description = (ogDesc || metaDesc || '').trim()
+    } catch { /* fetch failed — use domain as title */ }
+
+    // Escape text for Typst content mode: [], #, *, _, and // (line comment trigger)
+    const esc = (s: string) => s
+      .replace(/\[/g, '\\[').replace(/\]/g, '\\]')
+      .replace(/#/g, '\\#').replace(/\*/g, '\\*').replace(/_/g, '\\_')
+      .replace(/\/\//g, '/\u200B/')  // zero-width space breaks // comment
+
+    const lines = [
+      `#block(stroke: 0.5pt + luma(200), radius: 4pt, inset: (x: 10pt, y: 8pt), width: 100%)[`,
+      `  #link("${fullUrl}")[*${esc(title)}*] #h(1fr) #text(fill: luma(140), size: 9pt)[${esc(domain)}]`,
+    ]
+    if (description) {
+      lines.push(`  \\`)
+      lines.push(`  #text(size: 9pt, fill: luma(80))[${esc(description)}]`)
+    }
+    lines.push(`]`)
+    const insertPos = ed.getPosition() ?? { lineNumber: sl, column: sc }
+    ed.executeEdits('bookmark-insert', [{
+      range: new monaco.Range(insertPos.lineNumber, insertPos.column, insertPos.lineNumber, insertPos.column),
+      text: lines.join('\n') + '\n'
+    }])
+    ed.focus()
+  }, [])
+
   const insertWikiLink = useCallback((note: NoteMeta) => {
     const ed = editorRef.current; const pos = wikiPosRef.current
     if (!ed || !pos) return
@@ -251,8 +340,12 @@ export function NoteEditor({
     wikiPosRef.current = null
     setWikiPalette(p => ({ ...p, open: false }))
     const insertText = `[[${note.title}]]`
-    ed.setSelection(new monaco.Selection(pos.lineNumber, pos.column, cur.lineNumber, cur.column))
-    ed.executeEdits('wiki-link', [{ range: ed.getSelection()!, text: insertText }])
+    const model = ed.getModel()
+    // If Monaco auto-closed [[ → [[]], the ]] sits right after cursor — consume it
+    const lineContent = model?.getLineContent(cur.lineNumber) ?? ''
+    const afterCursor = lineContent.slice(cur.column - 1, cur.column + 1)
+    const endCol = afterCursor === ']]' ? cur.column + 2 : cur.column
+    ed.executeEdits('wiki-link', [{ range: new monaco.Range(pos.lineNumber, pos.column, cur.lineNumber, endCol), text: insertText }])
     ed.setPosition({ lineNumber: pos.lineNumber, column: pos.column + insertText.length })
     ed.focus()
   }, [])
@@ -261,10 +354,14 @@ export function NoteEditor({
   const closePalRef      = useRef(closePalette)
   const insertWikiRef    = useRef(insertWikiLink)
   const closeWikiRef     = useRef(closeWikiPalette)
+  const insertTagRef     = useRef(insertTag)
+  const closeTagRef      = useRef(closeTagPalette)
   doInsertRef.current    = doInsert
   closePalRef.current    = closePalette
   insertWikiRef.current  = insertWikiLink
   closeWikiRef.current   = closeWikiPalette
+  insertTagRef.current   = insertTag
+  closeTagRef.current    = closeTagPalette
 
   useEffect(() => {
     const el = containerRef.current; if (!el) return
@@ -283,6 +380,23 @@ export function NoteEditor({
           setWikiPalette(p => ({ ...p, selectedIndex: Math.max(0, p.selectedIndex - 1) }))
         } else if (e.key === 'Escape') {
           e.stopPropagation(); e.preventDefault(); closeWikiRef.current()
+        }
+        return
+      }
+      // Tag palette
+      if (tagPaletteRef.current.open) {
+        if (e.key === 'Enter') {
+          e.stopPropagation(); e.preventDefault()
+          const tag = tagPaletteRef.current.tags[tagPaletteRef.current.selectedIndex]
+          if (tag) insertTagRef.current(tag)
+        } else if (e.key === 'ArrowDown') {
+          e.stopPropagation(); e.preventDefault()
+          setTagPalette(p => ({ ...p, selectedIndex: Math.min(p.tags.length - 1, p.selectedIndex + 1) }))
+        } else if (e.key === 'ArrowUp') {
+          e.stopPropagation(); e.preventDefault()
+          setTagPalette(p => ({ ...p, selectedIndex: Math.max(0, p.selectedIndex - 1) }))
+        } else if (e.key === 'Escape') {
+          e.stopPropagation(); e.preventDefault(); closeTagRef.current()
         }
         return
       }
@@ -371,6 +485,23 @@ export function NoteEditor({
         }
         return
       }
+
+      // Table row continuation: line is one or more [cell], cells separated by commas
+      const tableCells = line.trim().match(/^(\[[^\]]*\],?\s*)+$/)
+      if (tableCells) {
+        const cellCount = (line.match(/\[[^\]]*\]/g) ?? []).length
+        if (cellCount > 0) {
+          const newRow = Array(cellCount).fill('[]').join(', ') + ','
+          ed.trigger('keyboard', 'type', { text: `\n${newRow}` })
+          // Move cursor inside the first [] of the new row
+          const newPos = ed.getPosition()
+          if (newPos) {
+            ed.setPosition({ lineNumber: newPos.lineNumber, column: newPos.column - newRow.length + 1 })
+          }
+          return
+        }
+      }
+
       ed.trigger('keyboard', 'type', { text: '\n' })
     })
 
@@ -422,6 +553,29 @@ export function NoteEditor({
         if (wikiPaletteRef.current.open) closeWikiRef.current()
       }
 
+      // Tag palette: detect // @tags: line
+      if (/^\/\/ @tags:/.test(line)) {
+        const lastSep = Math.max(before.lastIndexOf(','), before.indexOf(':'))
+        const afterSep = before.slice(lastSep + 1)
+        const leadingSpaces = afterSep.length - afterSep.trimStart().length
+        const partialCol = lastSep + 1 + leadingSpaces + 1  // 1-based column
+        const partial = afterSep.trimStart()
+        tagPosRef.current = { lineNumber: pos.lineNumber, column: partialCol }
+        const allTags = [...new Set(notesRef.current.flatMap(n => n.tags))]
+        const filtered = allTags.filter(t => t.toLowerCase().startsWith(partial.toLowerCase()) && t.toLowerCase() !== partial.toLowerCase())
+        if (filtered.length === 0) {
+          if (tagPaletteRef.current.open) closeTagRef.current()
+        } else {
+          const pixelPos = ed.getScrolledVisiblePosition(pos)
+          const rect = ed.getDomNode()?.getBoundingClientRect()
+          if (pixelPos && rect) {
+            setTagPalette({ open: true, x: rect.left + pixelPos.left, y: rect.top + pixelPos.top + 22, tags: filtered, selectedIndex: 0 })
+          }
+        }
+      } else {
+        if (tagPaletteRef.current.open) closeTagRef.current()
+      }
+
       const match  = before.match(/\/(\w*)$/)
 
       if (match) {
@@ -448,6 +602,8 @@ export function NoteEditor({
     ed.onDidChangeCursorPosition((e) => {
       const wiki = wikiPosRef.current
       if (wiki && (e.position.lineNumber !== wiki.lineNumber || e.position.column < wiki.column)) closeWikiRef.current()
+      const tag = tagPosRef.current
+      if (tag && (e.position.lineNumber !== tag.lineNumber || e.position.column < tag.column)) closeTagRef.current()
       const slash = slashPosRef.current; if (!slash) return
       if (e.position.lineNumber !== slash.lineNumber || e.position.column < slash.column) closePalette()
     })
@@ -456,36 +612,6 @@ export function NoteEditor({
   useEffect(() => {
     editorRef.current?.updateOptions({ fontSize })
   }, [fontSize])
-
-  // ── Tag autocomplete ─────────────────────────────────────────────────────────
-  useEffect(() => {
-    const disposable = monaco.languages.registerCompletionItemProvider(TYPST_LANGUAGE_ID, {
-      triggerCharacters: [' ', ','],
-      provideCompletionItems(model, position) {
-        const line = model.getLineContent(position.lineNumber)
-        if (!/^\/\/ @tags:/.test(line)) return { suggestions: [] }
-
-        const beforeCursor = line.slice(0, position.column - 1)
-        const lastSep = Math.max(beforeCursor.lastIndexOf(','), beforeCursor.indexOf(':'))
-        const partial = beforeCursor.slice(lastSep + 1).trimStart().toLowerCase()
-
-        const allTags = [...new Set(notesRef.current.flatMap(n => n.tags))]
-        const filtered = allTags.filter(t => t.toLowerCase().startsWith(partial) && t.toLowerCase() !== partial)
-        if (filtered.length === 0) return { suggestions: [] }
-
-        const replaceStart = position.column - partial.length
-        return {
-          suggestions: filtered.map(tag => ({
-            label: tag,
-            kind: monaco.languages.CompletionItemKind.Value,
-            insertText: tag,
-            range: new monaco.Range(position.lineNumber, replaceStart, position.lineNumber, position.column),
-          })),
-        }
-      },
-    })
-    return () => disposable.dispose()
-  }, [])
 
   // ── Image drag-and-drop ──────────────────────────────────────────────────────
   useEffect(() => {
@@ -554,6 +680,51 @@ export function NoteEditor({
 
       <SlashCommandPalette {...palette} onSelect={doInsert} onClose={closePalette} />
       <WikiLinkPalette {...wikiPalette} onSelect={insertWikiLink} onClose={closeWikiPalette} />
+      <TagPalette {...tagPalette} onSelect={insertTag} onClose={closeTagPalette} />
+
+      {bookmarkOpen && (
+        <div style={{
+          position: 'fixed', inset: 0, zIndex: 999,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          background: 'rgba(0,0,0,0.25)', backdropFilter: 'blur(4px)',
+        }} onClick={() => { setBookmarkOpen(false); editorRef.current?.focus() }}>
+          <form
+            onClick={e => e.stopPropagation()}
+            onSubmit={e => { e.preventDefault(); submitBookmark(bookmarkUrl) }}
+            style={{
+              background: 'var(--surface, #fff)', borderRadius: 12, padding: '20px 24px',
+              boxShadow: '0 8px 40px rgba(0,0,0,0.18)', minWidth: 360,
+              display: 'flex', flexDirection: 'column', gap: 12,
+            }}
+          >
+            <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>Web Bookmark</div>
+            <input
+              autoFocus
+              type="url"
+              placeholder="https://example.com"
+              value={bookmarkUrl}
+              onChange={e => setBookmarkUrl(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Escape') { setBookmarkOpen(false); editorRef.current?.focus() } }}
+              style={{
+                border: '1px solid var(--border, #e2e8f0)', borderRadius: 8,
+                padding: '8px 12px', fontSize: 13, outline: 'none',
+                background: 'var(--bg, #f8fafc)', color: 'var(--text)',
+                width: '100%', boxSizing: 'border-box',
+              }}
+            />
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+              <button type="button" onClick={() => { setBookmarkOpen(false); editorRef.current?.focus() }}
+                style={{ padding: '6px 14px', borderRadius: 6, border: '1px solid var(--border, #e2e8f0)', background: 'transparent', cursor: 'pointer', fontSize: 12 }}>
+                Cancel
+              </button>
+              <button type="submit"
+                style={{ padding: '6px 14px', borderRadius: 6, border: 'none', background: 'var(--accent, #2563eb)', color: '#fff', cursor: 'pointer', fontSize: 12, fontWeight: 600 }}>
+                Fetch
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
 
       <FindReplaceModal
         editorRef={editorRef}

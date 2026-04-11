@@ -38,7 +38,7 @@ struct NotesListView: View {
                                     noteToDelete = note
                                     showDeleteAlert = true
                                 } label: {
-                                    Label("Delete", systemImage: "trash")
+                                    Image(systemName: "trash")
                                 }
                                 .tint(.red)
                             }
