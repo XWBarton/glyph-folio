@@ -2,7 +2,7 @@
 
 # Glyph Folio
 
-Personal Typst note-taking system. Write notes in Typst markup on your Mac or iPhone, compile to PDF, and keep everything in sync through a self-hosted server — or stay fully offline with local storage.
+Personal Typst note-taking system. Write notes in Typst markup on your Desktop or iPhone, compile to PDF, and keep everything in sync through a self-hosted server — or stay fully offline with local storage.
 
 ## Features
 
