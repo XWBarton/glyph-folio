@@ -371,6 +371,30 @@ struct TypstEditor: UIViewRepresentable {
                     return false
                 }
             }
+            // Tab key (external keyboard): indent list items by 2 spaces
+            if text == "\t", range.length == 0 {
+                let tabNS = tv.text as NSString
+                let tabCursor = range.location
+                var tabLineStart = tabCursor
+                while tabLineStart > 0 && tabNS.character(at: tabLineStart - 1) != ("\n" as NSString).character(at: 0) {
+                    tabLineStart -= 1
+                }
+                let tabLine = tabNS.substring(with: NSRange(location: tabLineStart, length: tabCursor - tabLineStart))
+                var indEnd = tabLine.startIndex
+                while indEnd < tabLine.endIndex && tabLine[indEnd] == " " { indEnd = tabLine.index(after: indEnd) }
+                let afterInd = String(tabLine[indEnd...])
+                let listMarkers = ["- [x] ", "- [ ] ", "- ", "+ "]
+                if listMarkers.contains(where: { afterInd.hasPrefix($0) }) {
+                    let mns = NSMutableString(string: tv.text)
+                    mns.insert("  ", at: tabLineStart)
+                    tv.text = mns as String
+                    tv.selectedRange = NSRange(location: tabCursor + 2, length: 0)
+                    tv.delegate?.textViewDidChange?(tv)
+                    return false
+                }
+                return true
+            }
+
             guard text == "\n" else { return true }
             let ns = tv.text as NSString
             let cursor = range.location
@@ -382,25 +406,35 @@ struct TypstEditor: UIViewRepresentable {
             }
             let currentLine = ns.substring(with: NSRange(location: lineStart, length: cursor - lineStart))
 
-            // (detect prefix, what to insert for the next item)
-            let continuations: [(String, String)] = [
-                ("- [ ] ", "- [ ] "),
-                ("- [x] ", "- [ ] "),
-                ("- ",     "- "),
-                ("+ ",     "+ "),
-            ]
-            for (detect, insert) in continuations {
-                guard currentLine.hasPrefix(detect) else { continue }
-                let afterPrefix = String(currentLine.dropFirst(detect.count))
+            // Extract leading indent and list marker (supports sublists)
+            let listMarkers = ["- [x] ", "- [ ] ", "- ", "+ "]
+            var indentEnd = currentLine.startIndex
+            while indentEnd < currentLine.endIndex && currentLine[indentEnd] == " " {
+                indentEnd = currentLine.index(after: indentEnd)
+            }
+            let indent = String(currentLine[..<indentEnd])
+            let afterIndent = String(currentLine[indentEnd...])
+
+            if let marker = listMarkers.first(where: { afterIndent.hasPrefix($0) }) {
+                let cont = marker == "- [x] " ? "- [ ] " : marker
+                let afterPrefix = String(afterIndent.dropFirst(marker.count))
                 let mns = NSMutableString(string: tv.text)
                 if afterPrefix.trimmingCharacters(in: .whitespaces).isEmpty {
-                    // Empty item — exit list mode: remove the prefix, just break the line
-                    mns.replaceCharacters(in: NSRange(location: lineStart, length: cursor - lineStart), with: "")
-                    tv.text = mns as String
-                    tv.selectedRange = NSRange(location: lineStart, length: 0)
+                    if indent.count >= 2 {
+                        // Empty sublist item — outdent one level
+                        let newIndent = String(indent.dropFirst(2))
+                        let replacement = "\(newIndent)\(marker)"
+                        mns.replaceCharacters(in: NSRange(location: lineStart, length: cursor - lineStart), with: replacement)
+                        tv.text = mns as String
+                        tv.selectedRange = NSRange(location: lineStart + (replacement as NSString).length, length: 0)
+                    } else {
+                        // Empty top-level item — exit list
+                        mns.replaceCharacters(in: NSRange(location: lineStart, length: cursor - lineStart), with: "")
+                        tv.text = mns as String
+                        tv.selectedRange = NSRange(location: lineStart, length: 0)
+                    }
                 } else {
-                    // Non-empty item — continue the list
-                    let insertion = "\n\(insert)"
+                    let insertion = "\n\(indent)\(cont)"
                     mns.insert(insertion, at: cursor)
                     tv.text = mns as String
                     let newPos = min(cursor + (insertion as NSString).length, mns.length)

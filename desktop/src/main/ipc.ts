@@ -7,7 +7,7 @@ import { compileNote } from './compiler'
 import {
   listNotes, readNote, writeNote, upsertNote, deleteNote, createNote, exportNotePdf, resolveNotesDir, searchNotes,
   listAttachments, readAttachmentBuffer, writeAttachmentBuffer, deleteAttachmentFile,
-  pickAndSaveAttachment, saveFileAsAttachment, renameWikiLinks
+  pickAndSaveAttachment, saveFileAsAttachment, renameWikiLinks, importNote
 } from './notesManager'
 import { getStore } from './store'
 import { net } from 'electron'
@@ -279,6 +279,10 @@ export function registerIpcHandlers(): void {
     } catch (e) {
       return { ok: false, error: String(e) }
     }
+  })
+
+  ipcMain.handle('notes:import', async () => {
+    return importNote()
   })
 
   ipcMain.handle('sync:test-server', async (_event, url: string, token?: string) => {

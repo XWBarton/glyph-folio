@@ -8,7 +8,8 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = workerUrl
 export function usePdfRenderer(
   containerRef: React.RefObject<HTMLDivElement | null>,
   pdfBytes: Uint8Array | null,
-  zoom: number = 1
+  zoom: number = 1,
+  fitKey: number = 0
 ) {
   const versionRef = useRef(0)
 
@@ -68,5 +69,5 @@ export function usePdfRenderer(
     }
 
     run()
-  }, [pdfBytes, containerRef, zoom])
+  }, [pdfBytes, containerRef, zoom, fitKey])
 }

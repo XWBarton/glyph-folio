@@ -11,6 +11,7 @@ import { WikiLinkPalette } from './WikiLinkPalette'
 import { TagPalette } from './TagPalette'
 import { FindReplaceModal } from './FindReplaceModal'
 import { SpellSuggestions } from './SpellSuggestions'
+import { EmojiPicker } from './EmojiPicker'
 import { useSpellCheck } from '../hooks/useSpellCheck'
 import type { NoteMeta } from '../hooks/useNotes'
 
@@ -63,6 +64,7 @@ interface Props {
   tokenColors: TokenColors
   fontSize: number
   spellCheckEnabled: boolean
+  onToggleSpellIgnore?: () => void
   customDictionary: string[]
   onAddToDict: (word: string) => void
   notes: NoteMeta[]
@@ -73,8 +75,8 @@ interface Props {
 }
 
 export function NoteEditor({
-  value, onChange, tokenColors, fontSize, spellCheckEnabled, customDictionary, onAddToDict,
-  notes, onNavigate, noteId, onPickImage, onDropImage
+  value, onChange, tokenColors, fontSize, spellCheckEnabled, onToggleSpellIgnore,
+  customDictionary, onAddToDict, notes, onNavigate, noteId, onPickImage, onDropImage
 }: Props) {
   const [isDark, setIsDark] = useState(() => window.matchMedia('(prefers-color-scheme: dark)').matches)
 
@@ -128,6 +130,10 @@ export function NoteEditor({
   const [bookmarkUrl, setBookmarkUrl] = useState('')
   const bookmarkSlashRef = useRef<{ sl: number; sc: number; el: number; ec: number } | null>(null)
 
+  const [emojiPickerOpen, setEmojiPickerOpen] = useState(false)
+  const [emojiPickerPos, setEmojiPickerPos] = useState({ x: 0, y: 0 })
+  const emojiSlashRef = useRef<{ sl: number; sc: number; el: number; ec: number } | null>(null)
+
   const editorRef    = useRef<editor.IStandaloneCodeEditor | null>(null)
   const containerRef = useRef<HTMLDivElement>(null)
   const slashPosRef  = useRef<{ lineNumber: number; column: number } | null>(null)
@@ -141,6 +147,12 @@ export function NoteEditor({
   onPickImageRef.current = onPickImage
   const onDropImageRef = useRef(onDropImage)
   onDropImageRef.current = onDropImage
+
+  const [spellToast, setSpellToast] = useState<'enabled' | 'disabled' | null>(null)
+  const spellEnabledRef = useRef(spellCheckEnabled)
+  spellEnabledRef.current = spellCheckEnabled
+  const onToggleSpellRef = useRef(onToggleSpellIgnore)
+  onToggleSpellRef.current = onToggleSpellIgnore
 
   const { popup: spellPopup, closePopup: closeSpellPopup, handleMouseDown: spellMouseDown, replaceWord } =
     useSpellCheck(editorRef, value, customDictionary, spellCheckEnabled)
@@ -221,6 +233,18 @@ export function NoteEditor({
       bookmarkSlashRef.current = { sl, sc, el, ec }
       setBookmarkUrl('')
       setBookmarkOpen(true)
+      return
+    }
+
+    if (cmd.id === 'emoji') {
+      emojiSlashRef.current = { sl, sc, el, ec }
+      const pixelPos = ed.getScrolledVisiblePosition({ lineNumber: sl, column: sc })
+      const rect = ed.getDomNode()?.getBoundingClientRect()
+      if (pixelPos && rect) {
+        setEmojiPickerPos({ x: rect.left + pixelPos.left, y: rect.top + pixelPos.top + 22 })
+      }
+      setEmojiPickerOpen(true)
+      setTimeout(() => ed.blur(), 0)
       return
     }
 
@@ -504,30 +528,44 @@ export function NoteEditor({
     ed.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyB, () => wrapWithMarker('*'))
     ed.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyI, () => wrapWithMarker('_'))
 
-    // List / checkbox continuation on Enter
+    ed.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.KeyS, () => {
+      onToggleSpellRef.current?.()
+      const willBeEnabled = !spellEnabledRef.current
+      setSpellToast(willBeEnabled ? 'enabled' : 'disabled')
+      setTimeout(() => setSpellToast(null), 2000)
+    })
+
+    // List / checkbox continuation on Enter, Tab to indent, Shift+Tab to outdent
     ed.addCommand(monaco.KeyCode.Enter, () => {
       const model = ed.getModel(); const pos = ed.getPosition()
       if (!model || !pos) { ed.trigger('keyboard', 'type', { text: '\n' }); return }
 
       const line = model.getLineContent(pos.lineNumber)
-      const prefixes: [string, string][] = [
-        ['- [x] ', '- [ ] '],
-        ['- [ ] ', '- [ ] '],
-        ['- ',     '- '],
-        ['+ ',     '+ '],
-      ]
-      for (const [detect, cont] of prefixes) {
-        if (!line.startsWith(detect)) continue
-        const afterPrefix = line.slice(detect.length)
+      const listMatch = line.match(/^(\s*)(- \[x\] |- \[ \] |- |\+ )/)
+      if (listMatch) {
+        const indent = listMatch[1]
+        const marker = listMatch[2]
+        const cont = marker === '- [x] ' ? '- [ ] ' : marker
+        const afterPrefix = line.slice(indent.length + marker.length)
         if (afterPrefix.trim() === '') {
-          // Empty item — remove prefix, plain newline
-          ed.executeEdits('list-continue', [{
-            range: new monaco.Range(pos.lineNumber, 1, pos.lineNumber, line.length + 1),
-            text: ''
-          }])
-          ed.trigger('keyboard', 'type', { text: '\n' })
+          if (indent.length >= 2) {
+            // Empty sublist item — outdent one level
+            const newIndent = indent.slice(2)
+            ed.executeEdits('list-continue', [{
+              range: new monaco.Range(pos.lineNumber, 1, pos.lineNumber, line.length + 1),
+              text: `${newIndent}${marker}`
+            }])
+            ed.setPosition({ lineNumber: pos.lineNumber, column: newIndent.length + marker.length + 1 })
+          } else {
+            // Empty top-level item — remove prefix, plain newline
+            ed.executeEdits('list-continue', [{
+              range: new monaco.Range(pos.lineNumber, 1, pos.lineNumber, line.length + 1),
+              text: ''
+            }])
+            ed.trigger('keyboard', 'type', { text: '\n' })
+          }
         } else {
-          ed.trigger('keyboard', 'type', { text: `\n${cont}` })
+          ed.trigger('keyboard', 'type', { text: `\n${indent}${cont}` })
         }
         return
       }
@@ -549,6 +587,41 @@ export function NoteEditor({
       }
 
       ed.trigger('keyboard', 'type', { text: '\n' })
+    })
+
+    ed.addCommand(monaco.KeyCode.Tab, () => {
+      const model = ed.getModel(); const pos = ed.getPosition()
+      if (!model || !pos) return
+      const line = model.getLineContent(pos.lineNumber)
+      if (line.match(/^(\s*)(- \[x\] |- \[ \] |- |\+ )/)) {
+        ed.executeEdits('list-indent', [{
+          range: new monaco.Range(pos.lineNumber, 1, pos.lineNumber, 1),
+          text: '  '
+        }])
+        ed.setPosition({ lineNumber: pos.lineNumber, column: pos.column + 2 })
+        return
+      }
+      // Default: insert 2 spaces
+      ed.executeEdits('tab', [{
+        range: new monaco.Range(pos.lineNumber, pos.column, pos.lineNumber, pos.column),
+        text: '  '
+      }])
+    })
+
+    ed.addCommand(monaco.KeyMod.Shift | monaco.KeyCode.Tab, () => {
+      const model = ed.getModel(); const pos = ed.getPosition()
+      if (!model || !pos) return
+      const line = model.getLineContent(pos.lineNumber)
+      const indented = line.match(/^(\s+)(- \[x\] |- \[ \] |- |\+ )/)
+      if (indented && indented[1].length >= 2) {
+        ed.executeEdits('list-outdent', [{
+          range: new monaco.Range(pos.lineNumber, 1, pos.lineNumber, 3),
+          text: ''
+        }])
+        ed.setPosition({ lineNumber: pos.lineNumber, column: Math.max(1, pos.column - 2) })
+        return
+      }
+      ed.trigger('keyboard', 'outdentLines', {})
     })
 
     ed.onMouseDown((e) => {
@@ -728,6 +801,32 @@ export function NoteEditor({
       <WikiLinkPalette {...wikiPalette} onSelect={insertWikiLink} onClose={closeWikiPalette} />
       <TagPalette {...tagPalette} onSelect={insertTag} onClose={closeTagPalette} />
 
+      {emojiPickerOpen && (
+        <EmojiPicker
+          x={emojiPickerPos.x}
+          y={emojiPickerPos.y}
+          onInsert={(text, type) => {
+            const ed = editorRef.current
+            const slash = emojiSlashRef.current
+            emojiSlashRef.current = null
+            setEmojiPickerOpen(false)
+            if (!ed || !slash) { ed?.focus(); return }
+            const { sl, sc, el, ec } = slash
+            const finalText = type === 'emoticon' ? `\`${text}\`` : text
+            ed.executeEdits('emoji-insert', [{
+              range: new monaco.Range(sl, sc, el, ec),
+              text: finalText,
+            }])
+            ed.focus()
+          }}
+          onClose={() => {
+            emojiSlashRef.current = null
+            setEmojiPickerOpen(false)
+            editorRef.current?.focus()
+          }}
+        />
+      )}
+
       {bookmarkOpen && (
         <div style={{
           position: 'fixed', inset: 0, zIndex: 999,
@@ -789,6 +888,19 @@ export function NoteEditor({
           onAddToDictionary={() => { onAddToDict(spellPopup.word); closeSpellPopup() }}
           onClose={closeSpellPopup}
         />
+      )}
+
+      {spellToast && (
+        <div style={{
+          position: 'absolute', bottom: 48, left: '50%', transform: 'translateX(-50%)',
+          background: 'rgba(0,0,0,0.72)', backdropFilter: 'blur(8px)',
+          color: '#fff', borderRadius: 8, padding: '6px 14px',
+          fontSize: 12, fontWeight: 500, whiteSpace: 'nowrap',
+          pointerEvents: 'none', zIndex: 200,
+          animation: 'fadeIn 0.15s ease',
+        }}>
+          {spellToast === 'disabled' ? 'Spell check off for this note' : 'Spell check on for this note'}
+        </div>
       )}
     </div>
   )

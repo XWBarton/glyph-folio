@@ -2,7 +2,7 @@ import { app, BrowserWindow, shell, nativeImage } from 'electron'
 import { join } from 'path'
 import { registerIpcHandlers } from './ipc'
 import { buildMenu } from './menu'
-import { startWatcher, stopWatcher } from './notesManager'
+import { startWatcher, stopWatcher, seedDefaultNotes } from './notesManager'
 
 let mainWindow: BrowserWindow | null = null
 
@@ -70,6 +70,7 @@ app.whenReady().then(() => {
     }
   }
 
+  seedDefaultNotes()
   registerIpcHandlers()
   createWindow()
   buildMenu(mainWindow)

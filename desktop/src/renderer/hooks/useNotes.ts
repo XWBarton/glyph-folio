@@ -131,6 +131,16 @@ export function useNotes() {
     return note
   }, [])
 
+  // ── Import note ─────────────────────────────────────────────────────────────
+
+  const importNote = useCallback(async () => {
+    const result = await window.api.notesImport()
+    if (!result || 'error' in result) return null
+    const notes = await window.api.notesList()
+    setState(s => ({ ...s, notes, activeNote: result }))
+    return result
+  }, [])
+
   // ── Delete note ─────────────────────────────────────────────────────────────
 
   const deleteNote = useCallback(async (filePath: string) => {
@@ -164,6 +174,7 @@ export function useNotes() {
     selectNote,
     updateBody,
     createNote,
+    importNote,
     deleteNote,
     refreshNotes,
     flushSave,

@@ -37,11 +37,134 @@ class NoteStore: ObservableObject {
             if syncMode == .server { syncStatus = .synced }
             // Seed lastSavedTitles so the first save after load won't trigger spurious renames
             for note in notes { lastSavedTitles[note.id] = note.title }
+            // Seed tutorial note on first launch
+            if notes.isEmpty && !UserDefaults.standard.bool(forKey: "tutorialSeeded") {
+                await seedTutorialNote()
+                UserDefaults.standard.set(true, forKey: "tutorialSeeded")
+            }
         } catch {
             print("NoteStore.load error:", error)
             if syncMode == .server { syncStatus = .offline }
         }
         isLoading = false
+    }
+
+    private func seedTutorialNote() async {
+        let now = Date()
+        let datePart = now.formatted(.dateTime.month(.wide).day().year())
+        let timePart = now.formatted(.dateTime.hour().minute())
+        let dateLabel = "\(datePart) · \(timePart)"
+        let id = Note.makeId(title: "getting-started")
+        guard let dir = provider.notesDirectory() else { return }
+        let url = dir.appendingPathComponent("\(id).typ")
+        let body = tutorialNoteBody(dateLabel: dateLabel)
+        let note = Note(
+            id: id,
+            title: "Getting Started",
+            body: body,
+            createdAt: now,
+            modifiedAt: now,
+            filePath: url
+        )
+        notes.insert(note, at: 0)
+        lastSavedTitles[note.id] = note.title
+        try? await provider.writeNote(note)
+    }
+
+    private func tutorialNoteBody(dateLabel: String) -> String {
+        """
+        // @tags: tutorial
+        // = Getting Started
+        #text(9pt, fill: gray)[\(dateLabel)]
+        #line(length: 100%, stroke: 0.4pt + gray)
+
+        Notes start with a tag string that is commented out:
+        ```typst
+        // @tags: testing, another-tag
+        ```
+        Glyph Folio will observe these tags for you to filter and visualise but will not be rendered in your note.
+
+        #line(length: 100%)
+
+        The note title will come from the first primary header but can be overridden by a commented primary header below the tag comment.
+
+        ```typst
+        // = Tutorial Note
+        ```
+
+        #line(length: 100%)
+
+        The next two lines automatically insert the time and date of the note creation to the top of the note. It can be removed or edited if desired.
+
+        ```typst
+        #text(9pt, fill: gray)[\(dateLabel)]
+        #line(length: 100%, stroke: 0.4pt + gray)
+        ```
+
+        #line(length: 100%)
+
+        = Basic Typst Formatting
+        \\
+        #table(
+          columns: (1fr, 1fr, 2fr),
+          [*Symbol*], [*Function*], [*Note*],
+          [`=`], [Header], [h1 is =, h2 is ==, h3 is === etc],
+          [`*Glyph Folio*`], [Bold], [Wrap a word in a star to bold things],
+          [`_Glyph Folio_`], [italicise], [Wrap a word in underscore to italicise things],
+          [`-`], [Bullet lists], [],
+          [`+`], [Ordered lists], [],
+          [`//`], [Comment], [Text after this will not be rendered],
+          [`\\`], [New line], [],
+        )
+
+        There are lots of things you can do, check out #text(fill: rgb("#0000EE"))[#link("https://typst.app/docs/reference/syntax/")[Typst]] for way more.
+
+        = Glyph Folio Features
+
+        == Extensions of Typst Syntax
+        Use slash commands to quickly autofill many of these typst syntax features. Check it out type `/tab` and enter to fill a table format.
+        \\
+        \\
+        Glyph Folio has a couple of extra / extended commands:
+        - `/tag` will send your cursor to the tags at the top of the page so you can categorise your note and visualise in the graph view (described below)
+        - Pressing `[[` will allow you to link another page which can also be visualised in the graph view (also described below)
+        - `/check` will import the `cheq` typst module to give a pretty checkbox format
+        - `/bookmark` will let you enter a URL and put a web bookmark and will pull the web page details and an image if it can.
+        \\
+        #block(stroke: 0.5pt + luma(215), radius: 6pt, inset: 10pt, width: 100%)[
+          #link("https://typst.app/")[*Typst: The new foundation for documents*]\\
+          #text(size: 9pt, fill: luma(110))[Typst is the new foundation for documents. Sign up now and experience limitless power to write, create, and automate anything that you can fit on a page.]\\
+          #text(size: 8pt, fill: luma(160))[typst.app]
+        ]
+        - `/image` Fills the standard image format but if you are self-hosting will upload the image to a server path so the image can persist across devices.
+        - While using `/table` to create a table, pressing enter / return after the last cell in your row will create a new row in your table
+
+        == More on the Glyph Folio UI
+
+        === Main Interface
+        - The source is on the left pane and the rendered PDF is on the right
+        - Clicking the arrows in the top right of the panes will make them full screen. Click again to go back to side by side
+        - You can drag the centre column to resize the panes and double click to recentre
+        - Pressing the settings button in the top right gives you options for server connect, dictionary and source colours
+        - Export your rendered PDF or typst source with the share button. If there are images, they will be exported together in a .glyph directory
+
+        === Explorer
+        - Clicking the notes button or using `cmd+K` will open the explorer
+        - You'll see the list view which give you:
+            - A search box that can deep search note titles and content
+            - A list of your tags that you can click to filter
+            - A list of your most recently accessed notes in chronological order
+        - You can then switch to graph view which will give you:
+            - The graph with `link` lens on, this shows how each of your notes are connected by note links (`[[linked-note]]`)
+            - You can then switch to the `tag` lens which will show how each of your notes are connected by shared tags
+            - Clicking a node will take you to that note
+        - `cmd+N` will open a new note
+        - `cmd+1` will take you back to the last note you were on so you can quickly switch back and forth between two notes
+        - `cmd+2` and `cmd+3` also work for your second and third last used notes
+        - `cmd+R` will refresh the render
+        - `cmd+F` Find and replace
+        - `cmd+B` and `cmd+I` when highlighting text works to wrap words in *bold* or _italics_
+        """
     }
 
     // ── Select ───────────────────────────────────────────────────────────────
@@ -275,6 +398,99 @@ class NoteStore: ObservableObject {
         let zipData = zip.finalize()
         guard (try? zipData.write(to: bundleURL)) != nil else { return nil }
         return bundleURL
+    }
+
+    // ── Import ────────────────────────────────────────────────────────────────
+
+    func importNote(url: URL) async {
+        guard url.startAccessingSecurityScopedResource() else { return }
+        defer { url.stopAccessingSecurityScopedResource() }
+
+        switch url.pathExtension.lowercased() {
+        case "typ":  await importTypNote(url: url)
+        case "glyph": await importGlyphBundle(url: url)
+        default: break
+        }
+    }
+
+    private func importTypNote(url: URL) async {
+        guard let body = try? String(contentsOf: url, encoding: .utf8) else { return }
+        let originalId = url.deletingPathExtension().lastPathComponent
+        await createImportedNote(originalId: originalId, body: body, attachments: [:])
+    }
+
+    private func importGlyphBundle(url: URL) async {
+        guard let reader = ZipReader(url: url) else { return }
+        let allEntries = reader.entries()
+
+        guard let typKey = allEntries.keys.first(where: { $0.hasSuffix(".typ") }),
+              let typData = allEntries[typKey],
+              let body = String(data: typData, encoding: .utf8) else { return }
+
+        let originalId = String(typKey.dropLast(4)) // strip ".typ"
+        let prefix = "attachments/\(originalId)/"
+        var attachments: [String: Data] = [:]
+        for (key, data) in allEntries where key.hasPrefix(prefix) {
+            let filename = String(key.dropFirst(prefix.count))
+            if !filename.isEmpty { attachments[filename] = data }
+        }
+        await createImportedNote(originalId: originalId, body: body, attachments: attachments)
+    }
+
+    private func createImportedNote(originalId: String, body: String, attachments: [String: Data]) async {
+        let now = Date()
+        let dateStr = ISO8601DateFormatter().string(from: now).prefix(10)
+        let existingIds = Set(notes.map(\.id))
+
+        // Keep original ID if available, otherwise generate a collision-safe one
+        var id = originalId
+        if existingIds.contains(id) {
+            let slug = String(
+                originalId.replacingOccurrences(of: "^\\d{4}-\\d{2}-\\d{2}-", with: "",
+                    options: .regularExpression).prefix(40)
+            )
+            id = "\(dateStr)-\(slug)"
+            var counter = 1
+            while existingIds.contains(id) {
+                id = "\(dateStr)-\(slug)-\(counter)"
+                counter += 1
+            }
+        }
+
+        // Rewrite attachment paths in body if ID changed
+        var finalBody = body
+        if id != originalId {
+            finalBody = body.replacingOccurrences(
+                of: "attachments/\(originalId)/",
+                with: "attachments/\(id)/"
+            )
+        }
+
+        let p = provider
+        guard let dir = p.notesDirectory() else { return }
+        let fileURL = dir.appendingPathComponent("\(id).typ")
+        let note = Note(id: id, title: Note.extractTitle(from: finalBody, id: id),
+                        body: finalBody, createdAt: now, modifiedAt: now, filePath: fileURL)
+
+        notes.removeAll { $0.id == id }
+        notes.insert(note, at: 0)
+        activeNote = note
+        lastSavedTitles[note.id] = note.title
+        try? await p.writeNote(note)
+
+        // Write attachments
+        if !attachments.isEmpty {
+            let attDir = dir.appendingPathComponent("attachments/\(id)", isDirectory: true)
+            try? FileManager.default.createDirectory(at: attDir, withIntermediateDirectories: true)
+            for (filename, data) in attachments {
+                let dest = attDir.appendingPathComponent(filename)
+                try? data.write(to: dest)
+                // Also upload to server if in server mode
+                if syncMode == .server {
+                    _ = try? await p.uploadAttachment(noteId: id, filename: filename, data: data)
+                }
+            }
+        }
     }
 
     // ── Reload settings ───────────────────────────────────────────────────────

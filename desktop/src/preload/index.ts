@@ -56,6 +56,7 @@ export interface FolioAPI {
   attachmentsWrite(noteId: string, filename: string, dataBase64: string): Promise<{ ok: boolean } | { error: string }>
   attachmentsDelete(noteId: string, filename: string): Promise<{ ok: boolean } | { error: string }>
   notesShareSource(noteId: string, filePath: string): Promise<{ ok: boolean; error?: string }>
+  notesImport(): Promise<Note | { error: string } | null>
   settingsGet(): Promise<AppSettings>
   settingsSet(settings: Partial<AppSettings>): Promise<void>
   syncTestServer(url: string, token?: string): Promise<{ ok: boolean; error?: string }>
@@ -64,6 +65,7 @@ export interface FolioAPI {
   onMenuDelete(cb: () => void): () => void
   onMenuExportPdf(cb: () => void): () => void
   onMenuShareSource(cb: () => void): () => void
+  onMenuImport(cb: () => void): () => void
   onMenuRerender(cb: () => void): () => void
   onFullscreenChange(cb: (isFullscreen: boolean) => void): () => void
   syncGetBase(noteId: string): Promise<string | null>
@@ -93,6 +95,7 @@ const api: FolioAPI = {
   attachmentsWrite: (noteId, filename, dataBase64) => ipcRenderer.invoke('attachments:write', noteId, filename, dataBase64),
   attachmentsDelete: (noteId, filename) => ipcRenderer.invoke('attachments:delete', noteId, filename),
   notesShareSource: (noteId, filePath) => ipcRenderer.invoke('notes:share-source', noteId, filePath),
+  notesImport: () => ipcRenderer.invoke('notes:import'),
   settingsGet: () => ipcRenderer.invoke('settings:get'),
   settingsSet: (settings) => ipcRenderer.invoke('settings:set', settings),
   syncTestServer: (url, token) => ipcRenderer.invoke('sync:test-server', url, token),
@@ -126,6 +129,11 @@ const api: FolioAPI = {
     const handler = () => cb()
     ipcRenderer.on('menu:share-source', handler)
     return () => ipcRenderer.off('menu:share-source', handler)
+  },
+  onMenuImport: (cb) => {
+    const handler = () => cb()
+    ipcRenderer.on('menu:import', handler)
+    return () => ipcRenderer.off('menu:import', handler)
   },
   syncGetBase: (noteId) => ipcRenderer.invoke('sync:get-base', noteId),
   syncSetBase: (noteId, body) => ipcRenderer.invoke('sync:set-base', noteId, body),
