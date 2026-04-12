@@ -14,7 +14,7 @@ export default function App() {
   // ── State ────────────────────────────────────────────────────────────────────
   const {
     notes, activeNote, isLoading, history,
-    selectNote, updateBody, createNote, deleteNote, refreshNotes, flushSave
+    selectNote, updateBody, createNote, importNote, deleteNote, refreshNotes, flushSave
   } = useNotes()
 
   const [settings, setSettings] = useState<AppSettings>({
@@ -42,7 +42,20 @@ export default function App() {
   const { colors, updateColor, resetColors, resetOne } = useTokenColors()
 
   // ── Spell check ──────────────────────────────────────────────────────────────
-  const [spellCheckEnabled] = useState(true)
+  const [spellIgnoredNotes, setSpellIgnoredNotes] = useState<Set<string>>(() => {
+    try { return new Set(JSON.parse(localStorage.getItem('folio-spell-ignored') ?? '[]')) } catch { return new Set() }
+  })
+  const spellCheckEnabled = !spellIgnoredNotes.has(activeNote?.id ?? '')
+  const toggleSpellIgnore = useCallback(() => {
+    const id = activeNote?.id
+    if (!id) return
+    setSpellIgnoredNotes(prev => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id); else next.add(id)
+      localStorage.setItem('folio-spell-ignored', JSON.stringify([...next]))
+      return next
+    })
+  }, [activeNote?.id])
   const [customDictionary, setCustomDictionary] = useState<string[]>(() => {
     try { return JSON.parse(localStorage.getItem('folio-custom-dictionary') ?? '[]') } catch { return [] }
   })
@@ -181,9 +194,10 @@ export default function App() {
       window.api.onMenuExportPdf(exportPdf),
       window.api.onMenuRerender(compile),
       window.api.onMenuShareSource(handleShareSource),
+      window.api.onMenuImport(() => { importNote() }),
     ]
     return () => unsubs.forEach(fn => fn())
-  }, [handleCreate, handleDelete, exportPdf, compile, activeNote])
+  }, [handleCreate, handleDelete, exportPdf, compile, activeNote, importNote])
 
   // ── Cmd+K to open notes explorer, Cmd+1/2/3 for navigation history ──────────
   useEffect(() => {
@@ -281,6 +295,7 @@ export default function App() {
                 tokenColors={colors}
                 fontSize={settings.fontSize}
                 spellCheckEnabled={spellCheckEnabled}
+                onToggleSpellIgnore={toggleSpellIgnore}
                 customDictionary={customDictionary}
                 onAddToDict={handleAddWord}
                 notes={notes}

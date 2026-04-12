@@ -1,5 +1,80 @@
 import Foundation
 
+// ── ZIP Reader ────────────────────────────────────────────────────────────────
+
+/// Reads Store-method (uncompressed) ZIP files, such as those produced by ZipArchive.
+struct ZipReader {
+    private let data: Data
+
+    init?(url: URL) {
+        guard let d = try? Data(contentsOf: url) else { return nil }
+        self.data = d
+    }
+
+    /// Returns a dictionary of entry path → raw data for all stored (uncompressed) files.
+    func entries() -> [String: Data] {
+        guard let eocdOffset = findEOCD() else { return [:] }
+        let cdOffset = Int(readUInt32(at: eocdOffset + 16))
+        let cdCount  = Int(readUInt16(at: eocdOffset + 10))
+
+        var result: [String: Data] = [:]
+        var pos = cdOffset
+
+        for _ in 0..<cdCount {
+            guard pos + 46 <= data.count,
+                  readUInt32(at: pos) == 0x02014b50 else { break }
+
+            let compression     = readUInt16(at: pos + 10)
+            let compressedSize  = Int(readUInt32(at: pos + 20))
+            let filenameLen     = Int(readUInt16(at: pos + 28))
+            let extraLen        = Int(readUInt16(at: pos + 30))
+            let commentLen      = Int(readUInt16(at: pos + 32))
+            let localOffset     = Int(readUInt32(at: pos + 42))
+
+            let nameStart = pos + 46
+            let nameEnd   = nameStart + filenameLen
+            guard nameEnd <= data.count else { break }
+            let filename = String(data: data[nameStart..<nameEnd], encoding: .utf8) ?? ""
+
+            if compression == 0, !filename.hasSuffix("/") {
+                let localFilenameLen = Int(readUInt16(at: localOffset + 26))
+                let localExtraLen    = Int(readUInt16(at: localOffset + 28))
+                let dataOffset = localOffset + 30 + localFilenameLen + localExtraLen
+                let dataEnd    = dataOffset + compressedSize
+                if dataEnd <= data.count {
+                    result[filename] = data[dataOffset..<dataEnd]
+                }
+            }
+
+            pos += 46 + filenameLen + extraLen + commentLen
+        }
+        return result
+    }
+
+    private func findEOCD() -> Int? {
+        let minSearch = max(0, data.count - 65557) // 65535 comment + 22 EOCD
+        var i = data.count - 22
+        while i >= minSearch {
+            if readUInt32(at: i) == 0x06054b50 { return i }
+            i -= 1
+        }
+        return nil
+    }
+
+    private func readUInt16(at offset: Int) -> UInt16 {
+        guard offset + 1 < data.count else { return 0 }
+        return UInt16(data[offset]) | (UInt16(data[offset + 1]) << 8)
+    }
+
+    private func readUInt32(at offset: Int) -> UInt32 {
+        guard offset + 3 < data.count else { return 0 }
+        return UInt32(data[offset])        | (UInt32(data[offset + 1]) << 8)
+             | (UInt32(data[offset + 2]) << 16) | (UInt32(data[offset + 3]) << 24)
+    }
+}
+
+// ── ZIP Writer ────────────────────────────────────────────────────────────────
+
 /// Minimal ZIP writer (Store method, no compression).
 /// Supports files up to 4 GB (ZIP32 compatible).
 struct ZipArchive {

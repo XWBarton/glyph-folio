@@ -1,4 +1,4 @@
-import React, { useRef, useState } from 'react'
+import React, { useRef, useState, useCallback } from 'react'
 import { usePdfRenderer } from '../hooks/usePdfRenderer'
 
 interface Props {
@@ -16,9 +16,15 @@ function zoomLabel(z: number): string {
 export function PreviewPane({ pdfBytes, error, isCompiling }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
   const [zoomIdx, setZoomIdx] = useState(2) // default: index 2 = 1.0 (Fit)
+  const [fitKey, setFitKey] = useState(0)
   const zoom = ZOOM_LEVELS[zoomIdx]
 
-  usePdfRenderer(containerRef, pdfBytes, zoom)
+  const handleFitClick = useCallback(() => {
+    setZoomIdx(2)
+    setFitKey(k => k + 1)
+  }, [])
+
+  usePdfRenderer(containerRef, pdfBytes, zoom, fitKey)
 
   return (
     <div style={{
@@ -76,7 +82,7 @@ export function PreviewPane({ pdfBytes, error, isCompiling }: Props) {
             title="Zoom out"
           >−</button>
           <button
-            onClick={() => setZoomIdx(2)}
+            onClick={handleFitClick}
             title="Reset to Fit"
             style={{
               background: 'transparent', border: 'none', borderRadius: 6,

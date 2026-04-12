@@ -39,6 +39,11 @@ export function buildMenu(win: BrowserWindow | null): void {
           accelerator: 'CmdOrCtrl+Shift+S',
           click: () => win?.webContents.send('menu:share-source')
         },
+        {
+          label: 'Import…',
+          accelerator: 'CmdOrCtrl+Shift+I',
+          click: () => win?.webContents.send('menu:import')
+        },
         ...(process.platform !== 'darwin' ? [
           { type: 'separator' as const },
           { role: 'quit' as const }

@@ -21,36 +21,29 @@ export const SLASH_COMMANDS: SlashCommand[] = [
   { id: 'highlight', label: 'Highlight', description: 'Highlighted text', icon: '◐', category: 'text', snippet: '#highlight[${1:text}]$0', keywords: ['highlight', 'mark'] },
   { id: 'strike', label: 'Strikethrough', description: 'Struck-out text', icon: 'S̶', category: 'text', snippet: '#strike[${1:text}]$0', keywords: ['strike', 'strikethrough', 'del'] },
 
-  // Structure
-  { id: 'bullet', label: 'Bullet list', description: 'Unordered list', icon: '•', category: 'structure', snippet: '- $1\n- $2\n- $0', keywords: ['list', 'bullet', 'ul', 'unordered'] },
-  { id: 'numbered', label: 'Numbered list', description: 'Ordered list', icon: '1.', category: 'structure', snippet: '+ $1\n+ $2\n+ $0', keywords: ['numbered', 'ordered', 'ol'] },
-  { id: 'table', label: 'Table', description: '3-column table', icon: '⊞', category: 'structure', snippet: '#table(\n  columns: (${1:1fr}, ${2:1fr}, ${3:1fr}),\n  [${4:Header}], [${5:Header}], [${6:Header}],\n  [${7:Cell}], [${8:Cell}], [$0],\n)', keywords: ['table', 'grid', 'data'] },
-  { id: 'columns', label: 'Columns', description: 'Multi-column layout', icon: '⫴', category: 'structure', snippet: '#columns(${1:2})[\n  $0\n]', keywords: ['columns', 'layout'] },
-  { id: 'hrule', label: 'Divider', description: 'Horizontal rule', icon: '—', category: 'structure', snippet: '---\n$0', keywords: ['divider', 'rule', 'hr', 'line', 'separator'] },
-  { id: 'pagebreak', label: 'Page break', description: 'Force a new page', icon: '⤓', category: 'structure', snippet: '#pagebreak()\n$0', keywords: ['page', 'break', 'newpage'] },
+  // Structure — all structure items together so flat-array order matches visual (grouped) order
+  { id: 'bullet',    label: 'Bullet list',  description: 'Unordered list',                               icon: '•',  category: 'structure', snippet: '- $1\n- $2\n- $0',                                                                                                                                                    keywords: ['list', 'bullet', 'ul', 'unordered'] },
+  { id: 'numbered',  label: 'Numbered list',description: 'Ordered list',                                 icon: '1.', category: 'structure', snippet: '+ $1\n+ $2\n+ $0',                                                                                                                                                    keywords: ['numbered', 'ordered', 'ol'] },
+  { id: 'checklist', label: 'Checklist',    description: 'Interactive checkbox list (auto-imports cheq)',icon: '✓',  category: 'structure', snippet: '- [ ] ${1:item}\n- [ ] ${2:item}\n- [ ] $0',                                                                                                                           keywords: ['checklist', 'check', 'todo', 'task', 'checkbox'] },
+  { id: 'table',     label: 'Table',        description: '3-column table',                               icon: '⊞', category: 'structure', snippet: '#table(\n  columns: (${1:1fr}, ${2:1fr}, ${3:1fr}),\n  [${4:Header}], [${5:Header}], [${6:Header}],\n  [${7:Cell}], [${8:Cell}], [$0],\n)',                           keywords: ['table', 'grid', 'data'] },
+  { id: 'columns',   label: 'Columns',      description: 'Multi-column layout',                          icon: '⫴', category: 'structure', snippet: '#columns(${1:2})[\n  $0\n]',                                                                                                                                            keywords: ['columns', 'layout'] },
+  { id: 'hrule',     label: 'Divider',      description: 'Horizontal rule',                              icon: '—', category: 'structure', snippet: '#line(length: 100%)\n$0',                                                                                                                                                               keywords: ['divider', 'rule', 'hr', 'line', 'separator'] },
+  { id: 'pagebreak', label: 'Page break',   description: 'Force a new page',                             icon: '⤓', category: 'structure', snippet: '#pagebreak()\n$0',                                                                                                                                                      keywords: ['page', 'break', 'newpage'] },
 
-  // Media
-  { id: 'image', label: 'Image', description: 'Figure with caption', icon: '⬚', category: 'media', snippet: '#figure(\n  image("${1:path/to/image.png}", width: ${2:80%}),\n  caption: [$3],\n)\n$0', keywords: ['image', 'figure', 'picture', 'photo', 'img'] },
-  { id: 'code', label: 'Code block', description: 'Fenced code', icon: '</>', category: 'media', snippet: '```${1:language}\n$2\n```\n$0', keywords: ['code', 'codeblock', 'raw', 'fence'] },
-  { id: 'math', label: 'Math', description: 'Inline equation', icon: '∑', category: 'media', snippet: '$${1:x^2}$$0', keywords: ['math', 'equation', 'formula', 'latex'] },
-  { id: 'quote', label: 'Quote', description: 'Block quote', icon: '"', category: 'media', snippet: '#quote(attribution: [$1])[\n  $2\n]\n$0', keywords: ['quote', 'blockquote', 'cite'] },
+  // Media — all media items together
+  { id: 'image',    label: 'Image',        description: 'Figure with caption',                        icon: '⬚', category: 'media', snippet: '#figure(\n  image("${1:path/to/image.png}", width: ${2:80%}),\n  caption: [$3],\n)\n$0', keywords: ['image', 'figure', 'picture', 'photo', 'img'] },
+  { id: 'code',     label: 'Code block',   description: 'Fenced code',                                icon: '</>', category: 'media', snippet: '```${1:language}\n$2\n```\n$0',                                                          keywords: ['code', 'codeblock', 'raw', 'fence'] },
+  { id: 'math',     label: 'Math',         description: 'Inline equation',                            icon: '∑',  category: 'media', snippet: '$${1:x^2}$$0',                                                                            keywords: ['math', 'equation', 'formula', 'latex'] },
+  { id: 'quote',    label: 'Quote',        description: 'Block quote',                                icon: '"',  category: 'media', snippet: '#quote(attribution: [$1])[\n  $2\n]\n$0',                                                  keywords: ['quote', 'blockquote', 'cite'] },
+  { id: 'bookmark', label: 'Web Bookmark', description: 'Fetch page title & description from URL',    icon: '◈',  category: 'media', snippet: '',                                                                                         keywords: ['bookmark', 'url', 'link', 'web', 'website', 'page'] },
+  { id: 'emoji',    label: 'Emoji',        description: 'Search emoji & emoticons',                   icon: '☺',  category: 'media', snippet: '',                                                                                         keywords: ['emoji', 'emote', 'emoticon', 'smiley', 'face', 'symbol'] },
 
-  // Tags
-  { id: 'tag', label: 'Add tags', description: 'Edit note tags', icon: '#', category: 'advanced', snippet: '', keywords: ['tag', 'tags', 'label'] },
-
-  // Date / time
-  { id: 'datetime', label: 'Date & Time', description: 'Insert current date and time', icon: '◷', category: 'advanced', snippet: '', keywords: ['date', 'time', 'now', 'today', 'datetime', 'timestamp'] },
-
-  // Checklist
-  { id: 'checklist', label: 'Checklist', description: 'Interactive checkbox list (auto-imports cheq)', icon: '✓', category: 'structure', snippet: '- [ ] ${1:item}\n- [ ] ${2:item}\n- [ ] $0', keywords: ['checklist', 'check', 'todo', 'task', 'checkbox'] },
-
-  // Bookmark
-  { id: 'bookmark', label: 'Web Bookmark', description: 'Fetch page title & description from URL', icon: '◈', category: 'media', snippet: '', keywords: ['bookmark', 'url', 'link', 'web', 'website', 'page'] },
-
-  // Advanced
-  { id: 'set-text', label: 'Set font', description: '#set text(…)', icon: 'Aa', category: 'advanced', snippet: '#set text(font: "${1:New Computer Modern}", size: ${2:11}pt)\n$0', keywords: ['font', 'text', 'set', 'size'] },
-  { id: 'set-page', label: 'Set page', description: '#set page(…)', icon: '□', category: 'advanced', snippet: '#set page(margin: ${1:1.5cm}, paper: "${2:a4}")\n$0', keywords: ['page', 'margin', 'paper', 'set'] },
-  { id: 'bibliography', label: 'Bibliography', description: 'Reference list', icon: '≡', category: 'advanced', snippet: '#bibliography("${1:refs.bib}")\n$0', keywords: ['bibliography', 'references', 'bib'] },
+  // Advanced — all advanced items together
+  { id: 'tag',          label: 'Add tags',     description: 'Edit note tags',              icon: '#',  category: 'advanced', snippet: '',                                                                            keywords: ['tag', 'tags', 'label'] },
+  { id: 'datetime',     label: 'Date & Time',  description: 'Insert current date and time',icon: '◷',  category: 'advanced', snippet: '',                                                                            keywords: ['date', 'time', 'now', 'today', 'datetime', 'timestamp'] },
+  { id: 'set-text',     label: 'Set font',     description: '#set text(…)',                icon: 'Aa', category: 'advanced', snippet: '#set text(font: "${1:New Computer Modern}", size: ${2:11}pt)\n$0',            keywords: ['font', 'text', 'set', 'size'] },
+  { id: 'set-page',     label: 'Set page',     description: '#set page(…)',                icon: '□',  category: 'advanced', snippet: '#set page(margin: ${1:1.5cm}, paper: "${2:a4}")\n$0',                        keywords: ['page', 'margin', 'paper', 'set'] },
+  { id: 'bibliography', label: 'Bibliography', description: 'Reference list',              icon: '≡',  category: 'advanced', snippet: '#bibliography("${1:refs.bib}")\n$0',                                         keywords: ['bibliography', 'references', 'bib'] },
 ]
 
 export const CATEGORY_LABELS: Record<SlashCommand['category'], string> = {

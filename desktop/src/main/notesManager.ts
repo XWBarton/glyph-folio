@@ -4,6 +4,7 @@ import {
   existsSync, mkdirSync, statSync, rmSync, copyFileSync, utimesSync
 } from 'fs'
 import { join, basename, extname } from 'path'
+import { execFileSync } from 'child_process'
 import chokidar, { FSWatcher } from 'chokidar'
 import { getStore } from './store'
 
@@ -336,6 +337,124 @@ export function renameWikiLinks(oldTitle: string, newTitle: string, excludeFileP
   return modified
 }
 
+// ── Tutorial note seeding ────────────────────────────────────────────────────
+
+function makeTutorialBody(dateLabel: string): string {
+  const b = '`'
+  return [
+    '// @tags: tutorial',
+    '// = Getting Started',
+    `#text(9pt, fill: gray)[${dateLabel}]`,
+    '#line(length: 100%, stroke: 0.4pt + gray)',
+    '',
+    'Notes start with a tag string that is commented out: ',
+    `${b}${b}${b}typst`,
+    '// @tags: testing, another-tag',
+    `${b}${b}${b}`,
+    'Glyph Folio will observe these tags for you to filter and visualise but will not be rendered in your note. ',
+    '',
+    '#line(length: 100%)',
+    '',
+    'The note title will come from the first primary header but can be overridden by a commented primary header below the tag comment.',
+    '',
+    `${b}${b}${b}typst`,
+    '// = Tutorial Note',
+    `${b}${b}${b}`,
+    '',
+    '#line(length: 100%)',
+    '',
+    'The next two lines automatically insert the time and date of the note creation to the top of the note. It can be removed or edited if desired. ',
+    '',
+    `${b}${b}${b}typst`,
+    `#text(9pt, fill: gray)[${dateLabel}]`,
+    '#line(length: 100%, stroke: 0.4pt + gray)',
+    `${b}${b}${b}`,
+    '',
+    '#line(length: 100%)',
+    '',
+    '= Basic Typst Formatting',
+    '\\',
+    '#table(',
+    '  columns: (1fr, 1fr, 2fr),',
+    '  [*Symbol*], [*Function*], [*Note*],',
+    `  [${b}=${b}], [Header], [h1 is =, h2 is ==, h3 is === etc],`,
+    `  [${b}*Glyph Folio*${b}], [Bold], [Wrap a word in a star to bold things],`,
+    `  [${b}_Glyph Folio_${b}], [italicise], [Wrap a word in underscore to italicise things],`,
+    `  [${b}-${b}], [Bullet lists], [],`,
+    `  [${b}+${b}], [Ordered lists], [],`,
+    `  [${b}//${b}], [Comment], [Text after this will not be rendered],`,
+    `  [${b}\\${b}${b}], [New line], [],`,
+    ')',
+    '',
+    'There are lots of things you can do, check out #text(fill: rgb("#0000EE"))[#link("https://typst.app/docs/reference/syntax/")[Typst]] for way more. ',
+    '',
+    '= Glyph Folio Features',
+    '',
+    '== Extensions of Typst Syntax',
+    `Use slash commands to quickly autofill many of these typst syntax features. Check it out type ${b}/tab${b} and enter to fill a table format.`,
+    '\\',
+    '\\',
+    'Glyph Folio has a couple of extra / extended commands:',
+    `- ${b}/tag${b} will send your cursor to the tags at the top of the page so you can categorise your note and visualise in the graph view (described below)`,
+    `- Pressing ${b}[[${b} will allow you to link another page which can also be visualised in the graph view (also described below)`,
+    `- ${b}/check${b} will import the ${b}cheq${b} typst module to give a pretty checkbox format`,
+    `- ${b}/bookmark${b} will let you enter a URL and put a web bookmark and will pull the web page details and an image if it can.`,
+    '\\',
+    '#block(stroke: 0.5pt + luma(215), radius: 6pt, inset: 10pt, width: 100%)[',
+    '  #link("https://typst.app/")[*Typst: The new foundation for documents*]\\',
+    '  #text(size: 9pt, fill: luma(110))[Typst is the new foundation for documents. Sign up now and experience limitless power to write, create, and automate anything that you can fit on a page.]\\',
+    '  #text(size: 8pt, fill: luma(160))[typst.app]',
+    ']',
+    `- ${b}/image${b} Fills the standard image format but if you are self-hosting will upload the image to a server path so the image can persist across devices.`,
+    `- While using ${b}/table${b} to create a table, pressing enter / return after the last cell in your row will create a new row in your table`,
+    '',
+    '== More on the Glyph Folio UI',
+    '',
+    '=== Main Interface',
+    '- As you can see the source is on the left pane and the rendered PDF is on the right',
+    '- Clicking the arrows in the top right of the panes will make them full screen. Click again to go back to side by side',
+    '- You can drag the centre column to resize the panes and double click to recentre',
+    '- Pressing the settings button in the top right gives you options for server connect, dictionary and source colours',
+    '- Export your rendered PDF or typst source with the share button. If there are images, they will be exported together in a .glyph directory',
+    '',
+    '=== Explorer',
+    `- Clicking the notes button or using ${b}cmd+K${b} will open the explorer`,
+    '- You\'ll see the list view which give you: ',
+    '    - A search box that can deep search note titles and content',
+    '    - A list of your tags that you can click to filter',
+    '    - A list of your most recently accessed notes in chronological order',
+    '- You can then switch to graph view which will give you:',
+    `    - The graph with ${b}link${b} lens on, this shows how each of your notes are connected by note links (${b}[[linked-note]]${b})`,
+    `    - You can then switch to the ${b}tag${b} lens which will show how each of your notes are connected by shared tags`,
+    '    - Clicking a node will take you to that note',
+    `- ${b}cmd+N${b} will open a new note`,
+    `- ${b}cmd+1${b} will take you back to the last note you were on so you can quickly switch back and forth between two notes`,
+    `- ${b}cmd+2${b} and ${b}cmd+3${b} also work for your second and third last used notes`,
+    `- ${b}cmd+R${b} will refresh the render`,
+    `- ${b}cmd+F${b} Find and replace`,
+    `- ${b}cmd+B${b} and ${b}cmd+I${b} when highlighting text works to wrap words in *bold* or _italics_`,
+    '',
+    '',
+    '',
+  ].join('\n')
+}
+
+export function seedDefaultNotes(): void {
+  const markerPath = join(app.getPath('userData'), '.tutorial-seeded')
+  if (existsSync(markerPath)) return
+
+  const dir = resolveNotesDir()
+  const date = new Date()
+  const dateStr = date.toISOString().slice(0, 10)
+  const dateLabel = date.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }) +
+    ' · ' + date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })
+
+  const id = `${dateStr}-getting-started`
+  const filePath = join(dir, `${id}.typ`)
+  writeFileSync(filePath, makeTutorialBody(dateLabel), 'utf8')
+  writeFileSync(markerPath, '', 'utf8')
+}
+
 export async function exportNotePdf(
   pdfBytes: number[],
   suggestedName: string
@@ -350,6 +469,113 @@ export async function exportNotePdf(
     return { success: true }
   } catch (e) {
     return { success: false, error: String(e) }
+  }
+}
+
+// ── Import ───────────────────────────────────────────────────────────────────
+
+function safeNotePath(dir: string, dateStr: string, slug: string): { id: string; filePath: string } {
+  let id = `${dateStr}-${slug}`
+  let filePath = join(dir, `${id}.typ`)
+  let counter = 1
+  while (existsSync(filePath)) {
+    id = `${dateStr}-${slug}-${counter}`
+    filePath = join(dir, `${id}.typ`)
+    counter++
+  }
+  return { id, filePath }
+}
+
+function buildImportedNote(id: string, body: string, filePath: string, date: Date): Note {
+  return {
+    id,
+    title: extractTitle(body, id),
+    tags: extractTags(body),
+    links: extractLinks(body),
+    body,
+    createdAt: date.toISOString(),
+    modifiedAt: date.toISOString(),
+    filePath,
+  }
+}
+
+function importTyp(srcPath: string): Note {
+  const body = readFileSync(srcPath, 'utf8')
+  const dir = resolveNotesDir()
+  const date = new Date()
+  const dateStr = date.toISOString().slice(0, 10)
+  const slug = basename(srcPath, '.typ').replace(/^\d{4}-\d{2}-\d{2}-/, '').slice(0, 40) || 'imported'
+  const { id, filePath } = safeNotePath(dir, dateStr, slug)
+  writeFileSync(filePath, body, 'utf8')
+  return buildImportedNote(id, body, filePath, date)
+}
+
+function importGlyph(srcPath: string): Note | { error: string } {
+  const stagingDir = join(app.getPath('temp'), `glyph-import-${Date.now()}`)
+  try {
+    mkdirSync(stagingDir, { recursive: true })
+    if (process.platform === 'win32') {
+      execFileSync('powershell', ['-NoProfile', '-Command',
+        `Expand-Archive -LiteralPath '${srcPath.replace(/'/g, "''")}' -DestinationPath '${stagingDir.replace(/'/g, "''")}' -Force`
+      ])
+    } else {
+      execFileSync('unzip', ['-o', srcPath, '-d', stagingDir])
+    }
+
+    const typEntry = readdirSync(stagingDir).find(f => f.endsWith('.typ'))
+    if (!typEntry) return { error: 'No .typ file found in bundle' }
+
+    const originalId = basename(typEntry, '.typ')
+    let body = readFileSync(join(stagingDir, typEntry), 'utf8')
+
+    const dir = resolveNotesDir()
+    const date = new Date()
+    const dateStr = date.toISOString().slice(0, 10)
+
+    // Keep original ID if available; otherwise generate a collision-safe one
+    let id = originalId
+    if (existsSync(join(dir, `${id}.typ`))) {
+      const slug = originalId.replace(/^\d{4}-\d{2}-\d{2}-/, '').slice(0, 40) || 'imported'
+      id = safeNotePath(dir, dateStr, slug).id
+    }
+
+    // Update attachment refs in body if ID changed
+    if (id !== originalId) {
+      body = body.split(`attachments/${originalId}/`).join(`attachments/${id}/`)
+    }
+
+    // Copy attachments
+    const attSrcDir = join(stagingDir, 'attachments', originalId)
+    if (existsSync(attSrcDir)) {
+      const attDestDir = join(dir, 'attachments', id)
+      mkdirSync(attDestDir, { recursive: true })
+      for (const f of readdirSync(attSrcDir)) {
+        copyFileSync(join(attSrcDir, f), join(attDestDir, f))
+      }
+    }
+
+    const filePath = join(dir, `${id}.typ`)
+    writeFileSync(filePath, body, 'utf8')
+    return buildImportedNote(id, body, filePath, date)
+  } finally {
+    try { rmSync(stagingDir, { recursive: true }) } catch {}
+  }
+}
+
+export async function importNote(): Promise<Note | { error: string } | null> {
+  const result = await dialog.showOpenDialog({
+    title: 'Import note',
+    filters: [{ name: 'Glyph Folio / Typst', extensions: ['glyph', 'typ'] }],
+    properties: ['openFile'],
+  })
+  if (result.canceled || !result.filePaths[0]) return null
+  const srcPath = result.filePaths[0]
+  try {
+    return extname(srcPath).toLowerCase() === '.glyph'
+      ? importGlyph(srcPath)
+      : importTyp(srcPath)
+  } catch (e) {
+    return { error: String(e) }
   }
 }
 

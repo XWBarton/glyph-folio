@@ -1,4 +1,5 @@
 import SwiftUI
+import UniformTypeIdentifiers
 
 struct NotesListView: View {
     @EnvironmentObject var noteStore: NoteStore
@@ -6,6 +7,7 @@ struct NotesListView: View {
     @State private var searchText = ""
     @State private var noteToDelete: Note?
     @State private var showDeleteAlert = false
+    @State private var showImporter = false
 
     private var filteredNotes: [Note] {
         guard !searchText.isEmpty else { return noteStore.notes }
@@ -59,12 +61,29 @@ struct NotesListView: View {
                 }
             }
             ToolbarItem(placement: .navigationBarTrailing) {
-                Button {
-                    Task { await noteStore.create() }
-                } label: {
-                    Image(systemName: "square.and.pencil")
+                HStack(spacing: 4) {
+                    Button {
+                        showImporter = true
+                    } label: {
+                        Image(systemName: "square.and.arrow.down")
+                    }
+                    Button {
+                        Task { await noteStore.create() }
+                    } label: {
+                        Image(systemName: "square.and.pencil")
+                    }
                 }
             }
+        }
+        .fileImporter(
+            isPresented: $showImporter,
+            allowedContentTypes: [.data],
+            allowsMultipleSelection: false
+        ) { result in
+            guard let url = try? result.get().first else { return }
+            let ext = url.pathExtension.lowercased()
+            guard ext == "glyph" || ext == "typ" else { return }
+            Task { await noteStore.importNote(url: url) }
         }
         .alert("Delete Note?", isPresented: $showDeleteAlert, presenting: noteToDelete) { note in
             Button("Delete", role: .destructive) {
@@ -76,6 +95,11 @@ struct NotesListView: View {
         }
         .scrollContentBackground(.hidden)
         .background(backgroundGradient)
+        .safeAreaInset(edge: .top, spacing: 0) {
+            if noteStore.syncMode == .server {
+                SyncStatusBar(status: noteStore.syncStatus)
+            }
+        }
     }
 }
 
@@ -119,6 +143,47 @@ private struct NoteRowView: View {
         if lo > body.startIndex { excerpt = "…" + excerpt }
         if hi < body.endIndex   { excerpt = excerpt + "…" }
         return excerpt
+    }
+}
+
+// ── Sync status bar ───────────────────────────────────────────────────────────
+
+private struct SyncStatusBar: View {
+    let status: SyncStatus
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Group {
+                switch status {
+                case .synced:
+                    Image(systemName: "checkmark.icloud")
+                        .foregroundStyle(.green)
+                case .syncing:
+                    ProgressView()
+                        .scaleEffect(0.7)
+                        .tint(.accentColor)
+                case .offline:
+                    Image(systemName: "icloud.slash")
+                        .foregroundStyle(.orange)
+                }
+            }
+            .frame(width: 16, height: 16)
+
+            Text(statusLabel)
+                .font(.system(size: 11, weight: .medium))
+                .foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity, alignment: .center)
+        .padding(.vertical, 4)
+        .background(.bar)
+    }
+
+    private var statusLabel: String {
+        switch status {
+        case .synced:  return "Synced"
+        case .syncing: return "Syncing…"
+        case .offline: return "Offline — changes saved locally"
+        }
     }
 }
 
