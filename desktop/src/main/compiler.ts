@@ -55,7 +55,9 @@ function cleanupTempFiles(files: string[]): void {
  * Wiki link syntax [[...]] is stripped to plain text before compilation.
  */
 export async function compileNote(body: string): Promise<CompileResult> {
-  const cleanBody = body.replace(/\[\[([^\]]+)\]\]/g, '$1')
+  const cleanBody = body
+    .replace(/\[\[([^\]]+)\]\]/g, '$1')
+    .replace(/^---$/gm, '#line(length: 100%)')
   return compileTypst(cleanBody)
 }
 

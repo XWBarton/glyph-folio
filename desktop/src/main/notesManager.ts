@@ -383,7 +383,7 @@ function makeTutorialBody(dateLabel: string): string {
     `  [${b}-${b}], [Bullet lists], [],`,
     `  [${b}+${b}], [Ordered lists], [],`,
     `  [${b}//${b}], [Comment], [Text after this will not be rendered],`,
-    `  [${b}\\${b}${b}], [New line], [],`,
+    `  [${b}\\${b}], [New line], [],`,
     ')',
     '',
     'There are lots of things you can do, check out #text(fill: rgb("#0000EE"))[#link("https://typst.app/docs/reference/syntax/")[Typst]] for way more. ',

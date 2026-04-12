@@ -167,9 +167,10 @@ actor ServerSyncProvider: SyncProvider {
             throw SyncError.networkError("Invalid server URL")
         }
 
-        // Strip wikilinks before compilation, matching desktop behaviour
-        let content = note.body.replacingOccurrences(
-            of: #"\[\[([^\]]+)\]\]"#, with: "$1", options: .regularExpression)
+        // Strip wikilinks and convert --- dividers before compilation, matching desktop behaviour
+        let content = note.body
+            .replacingOccurrences(of: #"\[\[([^\]]+)\]\]"#, with: "$1", options: .regularExpression)
+            .replacingOccurrences(of: #"(?m)^---$"#, with: "#line(length: 100%)", options: .regularExpression)
 
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
