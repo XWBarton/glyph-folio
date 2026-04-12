@@ -145,6 +145,11 @@ npm run dev
 
 Server runs on port 3001, desktop opens via Electron with hot reload.
 
+## Things I Want to Add
+
+- Multiple accounts on a server
+- Full note backup system
+
 ---
 
 Found this useful and want to help support maintenance?
