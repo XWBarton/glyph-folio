@@ -7,10 +7,23 @@ import { compileNote } from './compiler'
 import {
   listNotes, readNote, writeNote, upsertNote, deleteNote, createNote, exportNotePdf, resolveNotesDir, searchNotes,
   listAttachments, readAttachmentBuffer, writeAttachmentBuffer, deleteAttachmentFile,
-  pickAndSaveAttachment, saveFileAsAttachment, renameWikiLinks, importNote
+  pickAndSaveAttachment, saveFileAsAttachment, renameWikiLinks, importNote,
+  extractTitle
 } from './notesManager'
 import { getStore } from './store'
 import { net } from 'electron'
+import { setReminder, cancelReminder, getReminder } from './reminders'
+
+/** Sync reminder from note body: sets or cancels based on presence of // @reminder: line. */
+function syncReminderFromBody(noteId: string, body: string): void {
+  const match = body.match(/^\/\/ @reminder:\s*(.+)$/m)
+  if (match) {
+    const title = extractTitle(body, noteId)
+    setReminder(noteId, title, match[1].trim())
+  } else {
+    cancelReminder(noteId)
+  }
+}
 
 /** Upload an attachment to the sync server (fire-and-forget; only runs in server mode). */
 async function uploadAttachmentToServer(noteId: string, filename: string, buf: Buffer): Promise<void> {
@@ -45,11 +58,16 @@ export function registerIpcHandlers(): void {
   })
 
   ipcMain.handle('notes:write', async (_event, filePath: string, body: string) => {
-    return writeNote(filePath, body)
+    const result = writeNote(filePath, body)
+    const noteId = basename(filePath, '.typ')
+    syncReminderFromBody(noteId, body)
+    return result
   })
 
   ipcMain.handle('notes:upsert', async (_event, id: string, body: string, mtime?: string) => {
-    return upsertNote(id, body, mtime)
+    const result = upsertNote(id, body, mtime)
+    syncReminderFromBody(id, body)
+    return result
   })
 
   ipcMain.handle('sync:get-base', (_event, noteId: string) => getBase(noteId))
@@ -296,5 +314,17 @@ export function registerIpcHandlers(): void {
     } catch (e) {
       return { ok: false, error: String(e) }
     }
+  })
+
+  ipcMain.handle('reminder:set', (_event, noteId: string, noteTitle: string, scheduledAt: string) => {
+    setReminder(noteId, noteTitle, scheduledAt)
+  })
+
+  ipcMain.handle('reminder:cancel', (_event, noteId: string) => {
+    cancelReminder(noteId)
+  })
+
+  ipcMain.handle('reminder:get', (_event, noteId: string) => {
+    return getReminder(noteId) ?? null
   })
 }

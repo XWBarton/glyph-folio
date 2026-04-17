@@ -27,6 +27,7 @@ struct Note: Identifiable, Codable, Equatable {
 
     var tags: [String] { Note.extractTags(from: body) }
     var links: [String] { Note.extractLinks(from: body) }
+    var reminder: Date? { Note.extractReminder(from: body) }
 
     // Parse tag lines — supports:
     //   // tags: foo, bar
@@ -42,6 +43,19 @@ struct Note: Identifiable, Codable, Equatable {
             if !tags.isEmpty { return tags }
         }
         return []
+    }
+
+    // Parse // @reminder: yyyy-MM-dd'T'HH:mm:ss (local time)
+    static func extractReminder(from body: String) -> Date? {
+        let df = DateFormatter()
+        df.dateFormat = "yyyy-MM-dd'T'HH:mm:ss"
+        df.locale = Locale(identifier: "en_US_POSIX")
+        for line in body.components(separatedBy: "\n") {
+            guard let range = line.range(of: #"//\s*@reminder:\s*"#, options: .regularExpression) else { continue }
+            let dateStr = String(line[range.upperBound...]).trimmingCharacters(in: .whitespaces)
+            if let date = df.date(from: dateStr) { return date }
+        }
+        return nil
     }
 
     // Parse `[[link target]]` wikilinks

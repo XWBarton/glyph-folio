@@ -134,6 +134,12 @@ export function NoteEditor({
   const [emojiPickerPos, setEmojiPickerPos] = useState({ x: 0, y: 0 })
   const emojiSlashRef = useRef<{ sl: number; sc: number; el: number; ec: number } | null>(null)
 
+  const [reminderOpen, setReminderOpen] = useState(false)
+  const [reminderQuickMode, setReminderQuickMode] = useState(true)
+  const [reminderDate, setReminderDate] = useState('')
+  const [reminderToast, setReminderToast] = useState<string | null>(null)
+  const reminderSlashRef = useRef<{ sl: number; sc: number; el: number; ec: number } | null>(null)
+
   const editorRef    = useRef<editor.IStandaloneCodeEditor | null>(null)
   const containerRef = useRef<HTMLDivElement>(null)
   const slashPosRef  = useRef<{ lineNumber: number; column: number } | null>(null)
@@ -168,6 +174,83 @@ export function NoteEditor({
     if (ctrl?.insert) ctrl.insert(snippet)
     else ed.executeEdits('image-insert', [{ range: new monaco.Range(pos.lineNumber, pos.column, pos.lineNumber, pos.column), text: snippet.replace(/\$\{[0-9]+\}/g, '').replace(/\$[0-9]+/g, '') }])
     ed.focus()
+  }, [])
+
+  // Format a Date as a local ISO string without timezone: "2026-04-22T10:00:00"
+  const toLocalISOString = (d: Date): string => {
+    const pad = (n: number) => String(n).padStart(2, '0')
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}:00`
+  }
+
+  // Format a Date for <input type="datetime-local">: "2026-04-22T10:00"
+  const toLocalInputValue = (d: Date): string => {
+    const pad = (n: number) => String(n).padStart(2, '0')
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
+  }
+
+  // Extract note title from body (mirrors iOS Note.extractTitle logic)
+  const extractNoteTitle = (body: string, id: string): string => {
+    const override = body.match(/^\/\/\s*=\s+(.+)$/m)
+    if (override) return override[1].trim()
+    const heading = body.match(/^={1,6}\s+(.+)$/m)
+    if (heading) return heading[1].trim()
+    const clean = id.replace(/^\d{4}-\d{2}-\d{2}-/, '').replace(/-/g, ' ')
+    return clean.charAt(0).toUpperCase() + clean.slice(1) || 'Untitled'
+  }
+
+  const confirmReminder = useCallback((date: Date) => {
+    // Snapshot refs before any state changes
+    const savedSlash = reminderSlashRef.current
+    reminderSlashRef.current = null
+    setReminderOpen(false)
+
+    // Defer edits until after React has finished closing the modal overlay —
+    // same pattern used by /image, /tag, /checklist etc.
+    setTimeout(() => {
+      const ed = editorRef.current
+      if (!ed) return
+
+      // Delete the /remind trigger text
+      if (savedSlash) {
+        const { sl, sc, el, ec } = savedSlash
+        ed.executeEdits('slash-remind', [{ range: new monaco.Range(sl, sc, el, ec), text: '' }])
+      }
+
+      const model = ed.getModel()
+      if (!model) { ed.focus(); return }
+
+      const isoDate = toLocalISOString(date)
+      const reminderLine = `// @reminder: ${isoDate}`
+      const lines = model.getValue().split('\n')
+
+      // Replace existing // @reminder: line, or insert after // @tags:
+      const existingIdx = lines.findIndex(l => /^\/\/ @reminder:/.test(l))
+      if (existingIdx !== -1) {
+        ed.executeEdits('slash-remind', [{
+          range: new monaco.Range(existingIdx + 1, 1, existingIdx + 1, lines[existingIdx].length + 1),
+          text: reminderLine
+        }])
+      } else {
+        const tagsIdx = lines.findIndex(l => /^\/\/ @tags:/.test(l))
+        const insertAfterLine = tagsIdx !== -1 ? tagsIdx + 1 : 0
+        ed.executeEdits('slash-remind', [{
+          range: new monaco.Range(insertAfterLine + 1, 1, insertAfterLine + 1, 1),
+          text: reminderLine + '\n'
+        }])
+      }
+
+      // Schedule the reminder in the main process
+      const noteTitle = extractNoteTitle(model.getValue(), noteIdRef.current)
+      window.api.reminderSet(noteIdRef.current, noteTitle, isoDate)
+        .then(() => {
+          const label = date.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
+          setReminderToast(`Reminder set for ${label}`)
+          setTimeout(() => setReminderToast(null), 3000)
+        })
+        .catch(err => console.error('[GlyphFolio Reminder] Failed to schedule:', err))
+
+      ed.focus()
+    }, 0)
   }, [])
 
   const doInsert = useCallback((cmd: SlashCommand) => {
@@ -244,6 +327,18 @@ export function NoteEditor({
         setEmojiPickerPos({ x: rect.left + pixelPos.left, y: rect.top + pixelPos.top + 22 })
       }
       setEmojiPickerOpen(true)
+      setTimeout(() => ed.blur(), 0)
+      return
+    }
+
+    if (cmd.id === 'remind') {
+      reminderSlashRef.current = { sl, sc, el, ec }
+      const now = new Date()
+      now.setDate(now.getDate() + 1)
+      now.setSeconds(0)
+      setReminderDate(toLocalInputValue(now))
+      setReminderQuickMode(true)
+      setReminderOpen(true)
       setTimeout(() => ed.blur(), 0)
       return
     }
@@ -565,7 +660,12 @@ export function NoteEditor({
             ed.trigger('keyboard', 'type', { text: '\n' })
           }
         } else {
-          ed.trigger('keyboard', 'type', { text: `\n${indent}${cont}` })
+          const curPos = ed.getPosition()!
+          ed.executeEdits('list-continue', [{
+            range: new monaco.Range(curPos.lineNumber, curPos.column, curPos.lineNumber, curPos.column),
+            text: `\n${indent}${cont}`
+          }])
+          ed.setPosition({ lineNumber: curPos.lineNumber + 1, column: indent.length + cont.length + 1 })
         }
         return
       }
@@ -871,6 +971,92 @@ export function NoteEditor({
         </div>
       )}
 
+      {reminderOpen && (
+        <div style={{
+          position: 'fixed', inset: 0, zIndex: 999,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          background: 'rgba(0,0,0,0.25)', backdropFilter: 'blur(4px)',
+        }} onClick={() => { setReminderOpen(false); editorRef.current?.focus() }}>
+          <div
+            onClick={e => e.stopPropagation()}
+            style={{
+              background: 'var(--surface, #fff)', borderRadius: 12, padding: '20px 24px',
+              boxShadow: '0 8px 40px rgba(0,0,0,0.18)', minWidth: 300, maxWidth: 360,
+              display: 'flex', flexDirection: 'column', gap: 12,
+            }}
+          >
+            <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>Set Reminder</div>
+            {reminderQuickMode ? (
+              <>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                  {([
+                    { label: 'In 1 hour',  ms: 3_600_000 },
+                    { label: 'Tomorrow',   ms: 86_400_000 },
+                    { label: 'In 3 days',  ms: 3 * 86_400_000 },
+                    { label: 'In 1 week',  ms: 7 * 86_400_000 },
+                    { label: 'In 2 weeks', ms: 14 * 86_400_000 },
+                    { label: 'In 1 month', ms: 30 * 86_400_000 },
+                  ] as const).map(opt => {
+                    const d = new Date(Date.now() + opt.ms)
+                    return (
+                      <button key={opt.label} onClick={() => confirmReminder(d)}
+                        style={{
+                          display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                          padding: '8px 12px', borderRadius: 8, border: '1px solid var(--border, #e2e8f0)',
+                          background: 'var(--bg, #f8fafc)', cursor: 'pointer', fontSize: 13,
+                          color: 'var(--text)',
+                        }}>
+                        <span style={{ fontWeight: 500 }}>{opt.label}</span>
+                        <span style={{ fontSize: 11, color: 'var(--muted, #94a3b8)' }}>
+                          {d.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
+                        </span>
+                      </button>
+                    )
+                  })}
+                </div>
+                <button onClick={() => setReminderQuickMode(false)}
+                  style={{ padding: '7px 14px', borderRadius: 6, border: '1px solid var(--border, #e2e8f0)', background: 'transparent', cursor: 'pointer', fontSize: 12, color: 'var(--accent, #2563eb)', fontWeight: 500 }}>
+                  Choose date & time…
+                </button>
+              </>
+            ) : (
+              <>
+                <input
+                  autoFocus
+                  type="datetime-local"
+                  value={reminderDate}
+                  min={toLocalInputValue(new Date())}
+                  onChange={e => setReminderDate(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Escape') { setReminderOpen(false); editorRef.current?.focus() } }}
+                  style={{
+                    border: '1px solid var(--border, #e2e8f0)', borderRadius: 8,
+                    padding: '8px 12px', fontSize: 13, outline: 'none',
+                    background: 'var(--bg, #f8fafc)', color: 'var(--text)',
+                    width: '100%', boxSizing: 'border-box',
+                  }}
+                />
+                <div style={{ display: 'flex', gap: 8, justifyContent: 'space-between' }}>
+                  <button onClick={() => setReminderQuickMode(true)}
+                    style={{ padding: '6px 14px', borderRadius: 6, border: '1px solid var(--border, #e2e8f0)', background: 'transparent', cursor: 'pointer', fontSize: 12 }}>
+                    ← Back
+                  </button>
+                  <button
+                    disabled={!reminderDate}
+                    onClick={() => { if (reminderDate) confirmReminder(new Date(reminderDate)) }}
+                    style={{ padding: '6px 14px', borderRadius: 6, border: 'none', background: 'var(--accent, #2563eb)', color: '#fff', cursor: 'pointer', fontSize: 12, fontWeight: 600, opacity: reminderDate ? 1 : 0.5 }}>
+                    Set Reminder
+                  </button>
+                </div>
+              </>
+            )}
+            <button onClick={() => { setReminderOpen(false); editorRef.current?.focus() }}
+              style={{ padding: '6px 14px', borderRadius: 6, border: '1px solid var(--border, #e2e8f0)', background: 'transparent', cursor: 'pointer', fontSize: 12, alignSelf: 'flex-end' }}>
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+
       <FindReplaceModal
         editorRef={editorRef}
         open={findOpen}
@@ -900,6 +1086,19 @@ export function NoteEditor({
           animation: 'fadeIn 0.15s ease',
         }}>
           {spellToast === 'disabled' ? 'Spell check off for this note' : 'Spell check on for this note'}
+        </div>
+      )}
+
+      {reminderToast && (
+        <div style={{
+          position: 'absolute', bottom: 48, left: '50%', transform: 'translateX(-50%)',
+          background: 'rgba(0,0,0,0.72)', backdropFilter: 'blur(8px)',
+          color: '#fff', borderRadius: 8, padding: '6px 14px',
+          fontSize: 12, fontWeight: 500, whiteSpace: 'nowrap',
+          pointerEvents: 'none', zIndex: 200,
+          animation: 'fadeIn 0.15s ease',
+        }}>
+          {reminderToast}
         </div>
       )}
     </div>

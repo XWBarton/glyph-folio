@@ -204,7 +204,7 @@ private struct ExploreNoteList: View {
                 ExploreNoteRow(note: notes[i], onSelect: onSelect)
             }
         }
-        .listStyle(.plain)
+        .listStyle(.insetGrouped)
         .scrollContentBackground(.hidden)
     }
 }

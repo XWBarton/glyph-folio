@@ -74,6 +74,9 @@ export interface FolioAPI {
   spellLoadDictFiles(affPath: string, dicPath: string, langName: string): Promise<{ aff: string; dic: string; name: string } | { error: string }>
   spellPickDict(): Promise<{ aff: string; dic: string; name: string; affPath: string; dicPath: string } | { error: string } | null>
   spellLoadDict(): Promise<{ aff: string; dic: string; name: string } | null>
+  reminderSet(noteId: string, noteTitle: string, scheduledAt: string): Promise<void>
+  reminderCancel(noteId: string): Promise<void>
+  reminderGet(noteId: string): Promise<{ noteId: string; noteTitle: string; scheduledAt: string } | null>
 }
 
 const api: FolioAPI = {
@@ -141,6 +144,9 @@ const api: FolioAPI = {
   spellLoadDictFiles: (affPath, dicPath, langName) => ipcRenderer.invoke('spell:load-dict-files', affPath, dicPath, langName),
   spellPickDict: () => ipcRenderer.invoke('spell:pick-dict'),
   spellLoadDict: () => ipcRenderer.invoke('spell:load-dict'),
+  reminderSet: (noteId, noteTitle, scheduledAt) => ipcRenderer.invoke('reminder:set', noteId, noteTitle, scheduledAt),
+  reminderCancel: (noteId) => ipcRenderer.invoke('reminder:cancel', noteId),
+  reminderGet: (noteId) => ipcRenderer.invoke('reminder:get', noteId),
   onFullscreenChange: (cb) => {
     const handler = (_: IpcRendererEvent, isFullscreen: boolean) => cb(isFullscreen)
     ipcRenderer.on('window:fullscreen', handler)

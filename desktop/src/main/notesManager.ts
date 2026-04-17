@@ -52,7 +52,7 @@ export function resolveNotesDir(): string {
 
 // ── Title extraction ─────────────────────────────────────────────────────────
 
-function extractTitle(body: string, id: string): string {
+export function extractTitle(body: string, id: string): string {
   // Explicit override: // = Title (commented-out heading, not rendered in PDF)
   const override = body.match(/^\/\/\s*=\s+(.+)$/m)
   if (override) return override[1].trim()

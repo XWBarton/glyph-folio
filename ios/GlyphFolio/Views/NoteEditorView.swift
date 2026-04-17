@@ -216,6 +216,47 @@ class EditorController: ObservableObject {
         tv.delegate?.textViewDidChange?(tv)
     }
 
+    /// Inserts or replaces the // @reminder: line in the note.
+    func insertOrUpdateReminder(date: Date, replacingSlash: Bool = false) {
+        guard let tv = textView else { return }
+
+        if replacingSlash,
+           let sel = tv.selectedTextRange,
+           let prev = tv.position(from: sel.start, offset: -1),
+           let prevRange = tv.textRange(from: prev, to: sel.start),
+           tv.text(in: prevRange) == "/" {
+            tv.replace(prevRange, withText: "")
+        }
+
+        let df = DateFormatter()
+        df.dateFormat = "yyyy-MM-dd'T'HH:mm:ss"
+        df.locale = Locale(identifier: "en_US_POSIX")
+        let reminderLine = "// @reminder: \(df.string(from: date))"
+
+        let ns = NSMutableString(string: tv.text ?? "")
+        let marker = "// @reminder:"
+        let markerRange = ns.range(of: marker)
+
+        if markerRange.location != NSNotFound {
+            let searchFrom = NSRange(location: markerRange.location, length: ns.length - markerRange.location)
+            let nlRange = ns.range(of: "\n", options: [], range: searchFrom)
+            let lineEnd = nlRange.location != NSNotFound ? nlRange.location : ns.length
+            ns.replaceCharacters(in: NSRange(location: markerRange.location, length: lineEnd - markerRange.location), with: reminderLine)
+        } else {
+            let tagsRange = ns.range(of: "// @tags:")
+            var insertLoc = 0
+            if tagsRange.location != NSNotFound {
+                let searchFrom = NSRange(location: tagsRange.location, length: ns.length - tagsRange.location)
+                let nlRange = ns.range(of: "\n", options: [], range: searchFrom)
+                insertLoc = nlRange.location != NSNotFound ? nlRange.location + 1 : ns.length
+            }
+            ns.insert(reminderLine + "\n", at: insertLoc)
+        }
+
+        tv.text = ns as String
+        tv.delegate?.textViewDidChange?(tv)
+    }
+
     /// Inserts "- [ ] " at the cursor and, if not already present, injects the
     /// cheq import block immediately after the // @tags: line.
     func insertChecklistItem(replacingSlash: Bool = false) {
@@ -595,6 +636,7 @@ private let allSlashCommands: [SlashCommand] = [
     .init(id: "datetime",  category: "Meta",      icon: "calendar.clock",                          name: "Date & Time",    description: "Insert current date and time",    syntax: ""),
     .init(id: "image",     category: "Media",     icon: "photo",                                   name: "Image",          description: "Insert image from photo library", syntax: ""),
     .init(id: "bookmark",  category: "Media",     icon: "bookmark",                                name: "Web Bookmark",   description: "Fetch page title & description from URL", syntax: ""),
+    .init(id: "remind",    category: "Meta",      icon: "bell.badge",                              name: "Reminder",       description: "Set a notification reminder for this note", syntax: ""),
 ]
 
 // ── Slash command palette ─────────────────────────────────────────────────────
@@ -775,6 +817,103 @@ struct WikiLinkPicker: View {
     }
 }
 
+// ── Reminder picker ───────────────────────────────────────────────────────────
+
+struct ReminderPickerView: View {
+    @Binding var isPresented: Bool
+    let onSelect: (Date) -> Void
+
+    @State private var customDate = Date().addingTimeInterval(86400)
+    @State private var showCustom = false
+
+    private let quickOptions: [(label: String, icon: String, seconds: TimeInterval)] = [
+        ("In 1 hour",  "clock",                3_600),
+        ("Tomorrow",   "sunrise",             86_400),
+        ("In 3 days",  "calendar",        3 * 86_400),
+        ("In 1 week",  "calendar.badge.clock", 7 * 86_400),
+        ("In 2 weeks", "calendar.badge.plus", 14 * 86_400),
+        ("In 1 month", "calendar.circle",     30 * 86_400),
+    ]
+
+    var body: some View {
+        NavigationStack {
+            List {
+                if !showCustom {
+                    Section("Quick") {
+                        ForEach(quickOptions, id: \.label) { opt in
+                            Button {
+                                isPresented = false
+                                onSelect(Date().addingTimeInterval(opt.seconds))
+                            } label: {
+                                HStack(spacing: 12) {
+                                    Image(systemName: opt.icon)
+                                        .font(.system(size: 16))
+                                        .frame(width: 34, height: 34)
+                                        .background(.ultraThinMaterial)
+                                        .clipShape(RoundedRectangle(cornerRadius: 8))
+                                        .foregroundStyle(.tint)
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(opt.label)
+                                            .font(.system(size: 15, weight: .medium))
+                                        Text(Date().addingTimeInterval(opt.seconds)
+                                            .formatted(date: .abbreviated, time: .shortened))
+                                            .font(.caption).foregroundStyle(.secondary)
+                                    }
+                                }
+                                .foregroundStyle(.primary)
+                            }
+                        }
+                    }
+                    Section {
+                        Button { showCustom = true } label: {
+                            Label("Choose date & time…", systemImage: "calendar.badge.clock")
+                                .foregroundStyle(.tint)
+                        }
+                    }
+                } else {
+                    Section("Date & Time") {
+                        DatePicker("", selection: $customDate, in: Date()...,
+                                   displayedComponents: [.date, .hourAndMinute])
+                            .datePickerStyle(.graphical)
+                            .labelsHidden()
+                    }
+                    Section {
+                        Button {
+                            isPresented = false
+                            onSelect(customDate)
+                        } label: {
+                            HStack {
+                                Spacer()
+                                Text("Set Reminder")
+                                    .font(.system(size: 15, weight: .semibold))
+                                    .foregroundStyle(.white)
+                                    .padding(.horizontal, 24).padding(.vertical, 10)
+                                    .background(Color.accentColor)
+                                    .clipShape(RoundedRectangle(cornerRadius: 10))
+                                Spacer()
+                            }
+                        }
+                    }
+                }
+            }
+            .navigationTitle("Set Reminder")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { isPresented = false }
+                }
+                if showCustom {
+                    ToolbarItem(placement: .navigationBarLeading) {
+                        Button("Back") { showCustom = false }
+                    }
+                }
+            }
+        }
+        .presentationDetents([.medium, .large])
+        .presentationDragIndicator(.visible)
+    }
+}
+
 // ── Tag suggestion bar ────────────────────────────────────────────────────────
 
 struct TagSuggestionBar: View {
@@ -823,6 +962,7 @@ struct NoteEditorView: View {
     @State private var tagSuggestions: [String] = []
     @State private var showBookmarkInput = false
     @State private var bookmarkURL = ""
+    @State private var showReminderPicker = false
 
     var body: some View {
         ZStack(alignment: .bottom) {
@@ -876,6 +1016,10 @@ struct NoteEditorView: View {
                         bookmarkURL = ""
                         showBookmarkInput = true
                     }
+                } else if cmd.id == "remind" {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+                        showReminderPicker = true
+                    }
                 } else if cmd.id == "datetime" {
                     let now = Date()
                     let datePart = now.formatted(.dateTime.month(.wide).day().year())
@@ -891,6 +1035,11 @@ struct NoteEditorView: View {
                                       wrapSuffix: cmd.wrapSuffix,
                                       replacingSlash: true)
                 }
+            }
+        }
+        .sheet(isPresented: $showReminderPicker) {
+            ReminderPickerView(isPresented: $showReminderPicker) { date in
+                controller.insertOrUpdateReminder(date: date, replacingSlash: true)
             }
         }
         .sheet(isPresented: $showWikiLinkPicker) {

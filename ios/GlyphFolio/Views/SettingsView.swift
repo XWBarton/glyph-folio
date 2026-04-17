@@ -1,4 +1,5 @@
 import SwiftUI
+import UniformTypeIdentifiers
 
 struct SettingsView: View {
     @EnvironmentObject var noteStore: NoteStore
@@ -9,6 +10,7 @@ struct SettingsView: View {
     @State private var authToken: String = AppSettings.shared.authToken
     @State private var testStatus: TestStatus = .idle
     @State private var testMessage = ""
+    @State private var showImporter = false
 
     enum TestStatus { case idle, testing, ok, fail }
 
@@ -28,6 +30,27 @@ struct SettingsView: View {
                 // ── Server settings ───────────────────────────────────────────
                 if settings.syncMode == .server {
                     Section("Server") {
+                        LabeledContent("Status") {
+                            HStack(spacing: 6) {
+                                switch noteStore.syncStatus {
+                                case .synced:
+                                    Image(systemName: "checkmark.icloud")
+                                        .foregroundStyle(.green)
+                                    Text("Synced")
+                                        .foregroundStyle(.secondary)
+                                case .syncing:
+                                    ProgressView().scaleEffect(0.8)
+                                    Text("Syncing…")
+                                        .foregroundStyle(.secondary)
+                                case .offline:
+                                    Image(systemName: "icloud.slash")
+                                        .foregroundStyle(.orange)
+                                    Text("Offline")
+                                        .foregroundStyle(.secondary)
+                                }
+                            }
+                            .font(.system(size: 13))
+                        }
                         LabeledContent("URL") {
                             TextField("http://192.168.1.10:3001", text: $serverUrl)
                                 .textInputAutocapitalization(.never)
@@ -71,6 +94,15 @@ struct SettingsView: View {
                     }
                 }
 
+                // ── Data ─────────────────────────────────────────────────────
+                Section("Data") {
+                    Button {
+                        showImporter = true
+                    } label: {
+                        Label("Import Note", systemImage: "square.and.arrow.down")
+                    }
+                }
+
                 // ── About ────────────────────────────────────────────────────
                 Section("About") {
                     HStack {
@@ -86,6 +118,16 @@ struct SettingsView: View {
             .scrollContentBackground(.hidden)
             .background(backgroundGradient)
             .navigationTitle("Settings")
+            .fileImporter(
+                isPresented: $showImporter,
+                allowedContentTypes: [.data],
+                allowsMultipleSelection: false
+            ) { result in
+                guard let url = try? result.get().first else { return }
+                let ext = url.pathExtension.lowercased()
+                guard ext == "glyph" || ext == "typ" else { return }
+                Task { await noteStore.importNote(url: url) }
+            }
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {

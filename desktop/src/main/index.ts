@@ -3,6 +3,7 @@ import { join } from 'path'
 import { registerIpcHandlers } from './ipc'
 import { buildMenu } from './menu'
 import { startWatcher, stopWatcher, seedDefaultNotes } from './notesManager'
+import { startReminderChecker } from './reminders'
 
 let mainWindow: BrowserWindow | null = null
 
@@ -72,6 +73,7 @@ app.whenReady().then(() => {
 
   seedDefaultNotes()
   registerIpcHandlers()
+  startReminderChecker()
   createWindow()
   buildMenu(mainWindow)
 

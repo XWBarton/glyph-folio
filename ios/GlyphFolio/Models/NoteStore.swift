@@ -1,6 +1,7 @@
 import Foundation
 import Combine
 import UIKit
+import UserNotifications
 
 enum SyncStatus {
     case synced, syncing, offline
@@ -42,6 +43,8 @@ class NoteStore: ObservableObject {
                 await seedTutorialNote()
                 UserDefaults.standard.set(true, forKey: "tutorialSeeded")
             }
+            // Re-schedule any reminders from synced notes (picks up reminders set on other platforms)
+            rescheduleAllReminders()
         } catch {
             print("NoteStore.load error:", error)
             if syncMode == .server { syncStatus = .offline }
@@ -245,6 +248,68 @@ class NoteStore: ObservableObject {
         }
     }
 
+    func createFromWebCapture(title: String, sourceURL: String, note: String) async {
+        let staleNote = activeNote
+        let staleBody = pendingBody
+        autoSaveTask?.cancel()
+        pendingBody = nil
+
+        let baseId = Note.makeId(title: title.isEmpty ? nil : title)
+        let existingIds = Set(notes.map(\.id))
+        var id = baseId
+        var counter = 1
+        while existingIds.contains(id) {
+            id = "\(baseId)-\(counter)"
+            counter += 1
+        }
+
+        let noteTitle = title.isEmpty ? "Web Capture" : title
+        let now = Date()
+        let datePart = now.formatted(.dateTime.month(.wide).day().year())
+        let timePart = now.formatted(.dateTime.hour().minute())
+        let dateLabel = "\(datePart) · \(timePart)"
+
+        var bodyLines = [
+            "// @tags: index",
+            "#text(9pt, fill: gray)[\(dateLabel)]",
+            "#line(length: 100%, stroke: 0.4pt + gray)",
+            "",
+            "= \(noteTitle)",
+            "",
+            "#link(\"\(sourceURL)\")[\(sourceURL)]",
+            "",
+        ]
+        if !note.isEmpty {
+            bodyLines.append(note)
+        }
+        let body = bodyLines.joined(separator: "\n")
+
+        guard let dir = provider.notesDirectory() else { return }
+        let url = dir.appendingPathComponent("\(id).typ")
+        let newNote = Note(
+            id: id,
+            title: noteTitle,
+            body: body,
+            createdAt: now,
+            modifiedAt: now,
+            filePath: url
+        )
+
+        notes.removeAll { $0.id == id }
+        notes.insert(newNote, at: 0)
+        activeNote = newNote
+
+        let p = provider
+        Task {
+            if var n = staleNote, let pending = staleBody {
+                n.body = pending
+                n.modifiedAt = Date()
+                try? await p.writeNote(n)
+            }
+            try? await p.writeNote(newNote)
+        }
+    }
+
     // ── Update body (debounced auto-save) ─────────────────────────────────────
 
     func updateBody(_ body: String) {
@@ -280,6 +345,7 @@ class NoteStore: ObservableObject {
         do {
             try await provider.writeNote(n)
             if syncMode == .server { syncStatus = .synced }
+            scheduleReminderIfNeeded(for: n)
             // Rename [[Old Title]] → [[New Title]] in all other notes if title changed
             if let old = oldTitle, old != n.title, !old.isEmpty, !n.title.isEmpty {
                 await renameWikiLinks(from: old, to: n.title, excludingId: n.id)
@@ -489,6 +555,39 @@ class NoteStore: ObservableObject {
                 if syncMode == .server {
                     _ = try? await p.uploadAttachment(noteId: id, filename: filename, data: data)
                 }
+            }
+        }
+    }
+
+    // ── Reminder notifications ────────────────────────────────────────────────
+
+    func scheduleReminderIfNeeded(for note: Note) {
+        let center = UNUserNotificationCenter.current()
+        center.removePendingNotificationRequests(withIdentifiers: ["glyph-reminder-\(note.id)"])
+        guard let reminderDate = note.reminder, reminderDate > Date() else { return }
+        let content = UNMutableNotificationContent()
+        content.title = note.title.isEmpty ? "Note Reminder" : note.title
+        content.body = "You set a reminder for this note."
+        content.sound = .default
+        let components = Calendar.current.dateComponents([.year, .month, .day, .hour, .minute], from: reminderDate)
+        let trigger = UNCalendarNotificationTrigger(dateMatching: components, repeats: false)
+        let request = UNNotificationRequest(identifier: "glyph-reminder-\(note.id)", content: content, trigger: trigger)
+        center.add(request) { error in
+            if let error { print("Reminder schedule error:", error) }
+        }
+    }
+
+    /// Re-scans all loaded notes and schedules iOS notifications for any future // @reminder: lines.
+    /// Called after load/sync so reminders set on other platforms (e.g. desktop) are picked up.
+    func rescheduleAllReminders() {
+        let center = UNUserNotificationCenter.current()
+        // Remove all existing glyph reminders first so stale ones don't linger
+        center.getPendingNotificationRequests { requests in
+            let glyphIds = requests.map(\.identifier).filter { $0.hasPrefix("glyph-reminder-") }
+            center.removePendingNotificationRequests(withIdentifiers: glyphIds)
+            // Re-schedule from current note state
+            for note in self.notes {
+                self.scheduleReminderIfNeeded(for: note)
             }
         }
     }

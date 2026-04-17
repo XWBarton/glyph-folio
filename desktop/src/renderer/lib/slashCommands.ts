@@ -44,6 +44,7 @@ export const SLASH_COMMANDS: SlashCommand[] = [
   { id: 'set-text',     label: 'Set font',     description: '#set text(…)',                icon: 'Aa', category: 'advanced', snippet: '#set text(font: "${1:New Computer Modern}", size: ${2:11}pt)\n$0',            keywords: ['font', 'text', 'set', 'size'] },
   { id: 'set-page',     label: 'Set page',     description: '#set page(…)',                icon: '□',  category: 'advanced', snippet: '#set page(margin: ${1:1.5cm}, paper: "${2:a4}")\n$0',                        keywords: ['page', 'margin', 'paper', 'set'] },
   { id: 'bibliography', label: 'Bibliography', description: 'Reference list',              icon: '≡',  category: 'advanced', snippet: '#bibliography("${1:refs.bib}")\n$0',                                         keywords: ['bibliography', 'references', 'bib'] },
+  { id: 'remind',       label: 'Reminder',     description: 'Set a notification reminder', icon: '◉',  category: 'advanced', snippet: '',                                                                            keywords: ['remind', 'reminder', 'notification', 'alert', 'alarm', 'notify'] },
 ]
 
 export const CATEGORY_LABELS: Record<SlashCommand['category'], string> = {
