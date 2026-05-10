@@ -25,6 +25,7 @@ export default function App() {
   const [searchOpen, setSearchOpen] = useState(false)
   const [lastSaved, setLastSaved] = useState<Date | null>(null)
   const [isDirty, setIsDirty] = useState(false)
+  const [focusTitleKey, setFocusTitleKey] = useState(0)
 
   const [settingsLoaded, setSettingsLoaded] = useState(false)
 
@@ -102,6 +103,17 @@ export default function App() {
     return () => window.removeEventListener('focus', handler)
   }, [settingsLoaded, settings.syncMode, settings.serverUrl, syncAll])
 
+  // Periodic background sync so reminders/notes set on other devices land
+  // without waiting for a focus event. Skipped when the window is hidden.
+  useEffect(() => {
+    if (!settingsLoaded || settings.syncMode !== 'server') return
+    const id = setInterval(() => {
+      if (document.hidden) return
+      syncAll().then(result => { if (result === 'synced') refreshNotes() })
+    }, 60_000)
+    return () => clearInterval(id)
+  }, [settingsLoaded, settings.syncMode, settings.serverUrl, settings.authToken, syncAll, refreshNotes])
+
   // ── Dirty tracking ────────────────────────────────────────────────────────────
   const prevBodyRef = useRef(body)
   useEffect(() => {
@@ -151,6 +163,21 @@ export default function App() {
     return result.filename
   }, [activeNote, settings.syncMode, uploadAttachment])
 
+  const handlePasteImage = useCallback(async (bytes: Uint8Array, ext: string): Promise<string | null> => {
+    const noteId = activeNote?.id
+    if (!noteId) return null
+    const filename = `${Date.now()}.${ext}`
+    let b64 = ''
+    const chunkSize = 8192
+    for (let i = 0; i < bytes.length; i += chunkSize)
+      b64 += String.fromCharCode(...bytes.subarray(i, i + chunkSize))
+    b64 = btoa(b64)
+    const res = await window.api.attachmentsWrite(noteId, filename, b64)
+    if ('error' in res) return null
+    if (settings.syncMode === 'server') uploadAttachment(noteId, filename)
+    return filename
+  }, [activeNote, settings.syncMode, uploadAttachment])
+
   // ── Navigate to note by title (wiki links) ───────────────────────────────────
   const handleNavigate = useCallback((title: string) => {
     const target = notes.find(n => n.title.toLowerCase() === title.toLowerCase())
@@ -161,6 +188,7 @@ export default function App() {
   const handleCreate = useCallback(async () => {
     const note = await createNote()
     setSearchOpen(false)
+    setFocusTitleKey(k => k + 1)
     return note
   }, [createNote])
 
@@ -303,9 +331,27 @@ export default function App() {
                 noteId={activeNote.id}
                 onPickImage={handlePickImage}
                 onDropImage={handleDropImage}
+                onPasteImage={handlePasteImage}
+                focusTitleKey={focusTitleKey}
               />
             ) : (
               <EmptyState onOpen={() => setSearchOpen(true)} isLoading={isLoading} />
+            )}
+            {activeNote && (
+              <div style={{
+                position: 'absolute', bottom: 10, left: 10,
+                fontSize: 11, color: 'var(--subtext)',
+                background: 'rgba(255,255,255,0.7)',
+                backdropFilter: 'blur(12px)',
+                WebkitBackdropFilter: 'blur(12px)',
+                border: '1px solid rgba(255,255,255,0.8)',
+                borderRadius: 20,
+                padding: '3px 10px',
+                boxShadow: '0 1px 4px rgba(0,0,0,0.06)',
+                userSelect: 'none',
+              }}>
+                {wordCount(activeNote.body).toLocaleString()} words
+              </div>
             )}
             <FontSizeControl
               fontSize={settings.fontSize}
@@ -373,6 +419,16 @@ export default function App() {
       />
     </div>
   )
+}
+
+function wordCount(body: string): number {
+  const text = body
+    .split('\n')
+    .filter(l => !l.trimStart().startsWith('//') && !l.trimStart().startsWith('#'))
+    .join(' ')
+    .replace(/={1,6}\s/g, ' ')
+    .replace(/[*_`[\]()]/g, ' ')
+  return text.trim() ? text.trim().split(/\s+/).filter(s => /\w/.test(s)).length : 0
 }
 
 function FontSizeControl({ fontSize, onChange }: { fontSize: number; onChange: (fs: number) => void }) {

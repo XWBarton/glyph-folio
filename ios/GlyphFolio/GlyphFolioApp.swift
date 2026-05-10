@@ -11,23 +11,33 @@ private class NotificationDelegate: NSObject, UNUserNotificationCenterDelegate {
     }
 }
 
-private let reminderSyncTaskId = "com.glyph.folio.reminder-sync"
+private let refreshTaskId   = "com.glyph.folio.reminder-sync"       // BGAppRefreshTask
+private let processingTaskId = "com.glyph.folio.reminder-process"    // BGProcessingTask
 
-/// Schedule the next background reminder sync. Call this each time the app backgrounds
-/// so iOS always has a pending request to wake the app.
+/// Schedule both background task types. iOS treats them independently, so
+/// registering both gives the scheduler more opportunities to fire our sync.
+/// `earliestBeginDate` is a lower bound — iOS decides the actual cadence based
+/// on how often the user opens the app, power state, and network conditions.
 func scheduleReminderSync() {
-    let request = BGAppRefreshTaskRequest(identifier: reminderSyncTaskId)
-    request.earliestBeginDate = Date(timeIntervalSinceNow: 15 * 60)  // no sooner than 15 min
-    try? BGTaskScheduler.shared.submit(request)
+    let refresh = BGAppRefreshTaskRequest(identifier: refreshTaskId)
+    refresh.earliestBeginDate = Date(timeIntervalSinceNow: 10 * 60)  // aim for ~10 min
+    try? BGTaskScheduler.shared.submit(refresh)
+
+    let processing = BGProcessingTaskRequest(identifier: processingTaskId)
+    processing.earliestBeginDate = Date(timeIntervalSinceNow: 10 * 60)
+    processing.requiresNetworkConnectivity = true
+    processing.requiresExternalPower = false
+    try? BGTaskScheduler.shared.submit(processing)
 }
 
-/// Background task handler: sync notes and reschedule reminders, then schedule the next refresh.
-private func handleReminderSyncTask(_ task: BGAppRefreshTask) {
-    scheduleReminderSync()  // always re-queue before doing work
+/// Shared body for both task types: pull latest notes (which reschedules any
+/// reminders), then always re-queue so iOS has something to wake us for next.
+private func handleBackgroundSync(_ task: BGTask) {
+    scheduleReminderSync()
 
     let syncTask = Task { @MainActor in
         let store = NoteStore()
-        await store.load()  // pulls latest notes (incl. any new // @reminder: lines) and reschedules
+        await store.load()
         task.setTaskCompleted(success: true)
     }
 
@@ -48,10 +58,18 @@ struct GlyphFolioApp: App {
         center.delegate = notificationDelegate
         center.requestAuthorization(options: [.alert, .badge, .sound]) { _, _ in }
 
-        // Register the background sync task — must happen before app finishes launching
-        BGTaskScheduler.shared.register(forTaskWithIdentifier: reminderSyncTaskId, using: nil) { task in
-            handleReminderSyncTask(task as! BGAppRefreshTask)
+        // Register both background task handlers — must happen before the app
+        // finishes launching. If iOS fires the handler, we sync and re-queue.
+        BGTaskScheduler.shared.register(forTaskWithIdentifier: refreshTaskId, using: nil) { task in
+            handleBackgroundSync(task)
         }
+        BGTaskScheduler.shared.register(forTaskWithIdentifier: processingTaskId, using: nil) { task in
+            handleBackgroundSync(task)
+        }
+
+        // Queue the first background sync at launch so iOS has a pending
+        // request even if the user hasn't backgrounded the app yet.
+        scheduleReminderSync()
     }
 
     var body: some Scene {
@@ -60,8 +78,18 @@ struct GlyphFolioApp: App {
                 .environmentObject(noteStore)
                 .tint(Color(red: 0.145, green: 0.388, blue: 0.922)) // #2563eb
                 .onChange(of: scenePhase) { _, phase in
-                    if phase == .background {
+                    switch phase {
+                    case .background:
                         scheduleReminderSync()
+                    case .active:
+                        // On foreground: pull latest notes (picks up reminders
+                        // set on other devices) and re-check permission status.
+                        Task {
+                            await noteStore.refreshNotificationAuth()
+                            await noteStore.load()
+                        }
+                    default:
+                        break
                     }
                 }
                 .onOpenURL { url in

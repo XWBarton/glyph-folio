@@ -26,6 +26,8 @@ export function SettingsPanel({
   const [fontSize, setFontSize] = useState(settings.fontSize)
   const [testStatus, setTestStatus] = useState<'idle' | 'ok' | 'fail'>('idle')
   const [testMsg, setTestMsg] = useState('')
+  const [notifStatus, setNotifStatus] = useState<'idle' | 'ok' | 'fail'>('idle')
+  const [notifMsg, setNotifMsg] = useState('')
   const [installedDicts, setInstalledDicts] = useState<{ id: string; name: string; affPath: string; dicPath: string }[]>([])
   const [activeLang, setActiveLang] = useState(settings.spellLangName || 'English (built-in)')
   const [dictLoading, setDictLoading] = useState(false)
@@ -76,6 +78,24 @@ export function SettingsPanel({
   const handleSave = () => {
     onSave({ syncMode, serverUrl, authToken, notesDir, fontSize })
     onClose()
+  }
+
+  const testNotification = async () => {
+    setNotifStatus('idle')
+    setNotifMsg('Sending…')
+    const result = await window.api.reminderTest()
+    if (!result.supported) {
+      setNotifStatus('fail')
+      setNotifMsg('Not supported on this system')
+      return
+    }
+    if (result.shown) {
+      setNotifStatus('ok')
+      setNotifMsg('Sent — if no banner appeared, check System Settings → Notifications')
+    } else {
+      setNotifStatus('fail')
+      setNotifMsg(result.error ?? 'Failed — check notification permission in System Settings')
+    }
   }
 
   const testConnection = async () => {
@@ -296,6 +316,26 @@ export function SettingsPanel({
                 ))}
               </div>
             )}
+          </Card>
+
+          {/* ── Reminders ── */}
+          <Card label="Reminders">
+            <div style={{ fontSize: 11, color: 'var(--subtext)', marginBottom: 8, lineHeight: 1.4 }}>
+              Use <code style={{ fontFamily: 'monospace' }}>/remind</code> in a note to schedule one.
+              If banners don't appear, grant notification permission to
+              {' '}<code style={{ fontFamily: 'monospace' }}>Glyph Folio</code> (or
+              {' '}<code style={{ fontFamily: 'monospace' }}>Electron</code> in dev)
+              {' '}in System Settings.
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <GlassBtn onClick={testNotification}>Test notification</GlassBtn>
+              {notifMsg && (
+                <span style={{
+                  fontSize: 11, lineHeight: 1.35,
+                  color: notifStatus === 'ok' ? 'var(--green)' : notifStatus === 'fail' ? 'var(--red)' : 'var(--subtext)'
+                }}>{notifMsg}</span>
+              )}
+            </div>
           </Card>
 
           {/* ── Syntax Colors ── */}

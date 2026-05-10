@@ -12,7 +12,7 @@ import {
 } from './notesManager'
 import { getStore } from './store'
 import { net } from 'electron'
-import { setReminder, cancelReminder, getReminder } from './reminders'
+import { setReminder, cancelReminder, getReminder, testNotification } from './reminders'
 
 /** Sync reminder from note body: sets or cancels based on presence of // @reminder: line. */
 function syncReminderFromBody(noteId: string, body: string): void {
@@ -326,5 +326,9 @@ export function registerIpcHandlers(): void {
 
   ipcMain.handle('reminder:get', (_event, noteId: string) => {
     return getReminder(noteId) ?? null
+  })
+
+  ipcMain.handle('reminder:test', async () => {
+    return await testNotification()
   })
 }

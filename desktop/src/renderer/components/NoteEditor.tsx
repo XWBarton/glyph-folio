@@ -72,11 +72,13 @@ interface Props {
   noteId: string
   onPickImage: () => Promise<string | null>
   onDropImage: (srcPath: string) => Promise<string | null>
+  onPasteImage: (bytes: Uint8Array, ext: string) => Promise<string | null>
+  focusTitleKey?: number
 }
 
 export function NoteEditor({
   value, onChange, tokenColors, fontSize, spellCheckEnabled, onToggleSpellIgnore,
-  customDictionary, onAddToDict, notes, onNavigate, noteId, onPickImage, onDropImage
+  customDictionary, onAddToDict, notes, onNavigate, noteId, onPickImage, onDropImage, onPasteImage, focusTitleKey
 }: Props) {
   const [isDark, setIsDark] = useState(() => window.matchMedia('(prefers-color-scheme: dark)').matches)
 
@@ -153,6 +155,8 @@ export function NoteEditor({
   onPickImageRef.current = onPickImage
   const onDropImageRef = useRef(onDropImage)
   onDropImageRef.current = onDropImage
+  const onPasteImageRef = useRef(onPasteImage)
+  onPasteImageRef.current = onPasteImage
 
   const [spellToast, setSpellToast] = useState<'enabled' | 'disabled' | null>(null)
   const spellEnabledRef = useRef(spellCheckEnabled)
@@ -832,6 +836,29 @@ export function NoteEditor({
     editorRef.current?.updateOptions({ fontSize })
   }, [fontSize])
 
+  useEffect(() => {
+    if (!focusTitleKey) return
+    const ed = editorRef.current
+    if (!ed) return
+    setTimeout(() => {
+      const model = ed.getModel()
+      if (!model) { ed.focus(); return }
+      const lineCount = model.getLineCount()
+      for (let i = 1; i <= lineCount; i++) {
+        const line = model.getLineContent(i)
+        const m = line.match(/^={1,6}\s+(.+)$/)
+        if (m) {
+          const col = line.indexOf(m[1]) + 1
+          ed.setSelection({ startLineNumber: i, startColumn: col, endLineNumber: i, endColumn: col + m[1].length })
+          ed.revealLine(i)
+          ed.focus()
+          return
+        }
+      }
+      ed.focus()
+    }, 150)
+  }, [focusTitleKey])
+
   // ── Image drag-and-drop ──────────────────────────────────────────────────────
   useEffect(() => {
     const el = containerRef.current; if (!el) return
@@ -853,9 +880,28 @@ export function NoteEditor({
         })
       })
     }
+    const onPaste = async (e: ClipboardEvent) => {
+      const imageItems = Array.from(e.clipboardData?.items ?? [])
+        .filter(i => i.kind === 'file' && i.type.startsWith('image/'))
+      if (imageItems.length === 0) return
+      e.preventDefault()
+      e.stopPropagation()
+      for (const item of imageItems) {
+        const file = item.getAsFile(); if (!file) continue
+        const ext = file.type.includes('png') ? 'png' : file.type.includes('gif') ? 'gif' : file.type.includes('webp') ? 'webp' : 'jpg'
+        const buf = await file.arrayBuffer()
+        const filename = await onPasteImageRef.current(new Uint8Array(buf), ext)
+        if (filename) insertImageSnippet(filename)
+      }
+    }
     el.addEventListener('dragover', onDragOver)
     el.addEventListener('drop', onDrop)
-    return () => { el.removeEventListener('dragover', onDragOver); el.removeEventListener('drop', onDrop) }
+    el.addEventListener('paste', onPaste, { capture: true })
+    return () => {
+      el.removeEventListener('dragover', onDragOver)
+      el.removeEventListener('drop', onDrop)
+      el.removeEventListener('paste', onPaste, { capture: true })
+    }
   }, [insertImageSnippet])
 
   return (

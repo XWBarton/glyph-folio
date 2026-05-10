@@ -88,6 +88,28 @@ extension UIColor {
     }
 }
 
+// ── Table of contents helpers ─────────────────────────────────────────────────
+
+private struct HeadingEntry: Identifiable {
+    let id = UUID()
+    let level: Int
+    let title: String
+    let charLocation: Int
+}
+
+private func parseHeadings(from text: String) -> [HeadingEntry] {
+    guard let regex = try? NSRegularExpression(pattern: #"^(={1,6})\s+(.+)$"#, options: .anchorsMatchLines) else { return [] }
+    let ns = text as NSString
+    var entries: [HeadingEntry] = []
+    for match in regex.matches(in: text, range: NSRange(location: 0, length: ns.length)) {
+        guard match.numberOfRanges == 3 else { continue }
+        let level = ns.substring(with: match.range(at: 1)).count
+        let title = ns.substring(with: match.range(at: 2)).trimmingCharacters(in: .whitespaces)
+        entries.append(HeadingEntry(level: level, title: title, charLocation: match.range.location))
+    }
+    return entries
+}
+
 // ── Editor controller ─────────────────────────────────────────────────────────
 
 class EditorController: ObservableObject {
@@ -216,6 +238,24 @@ class EditorController: ObservableObject {
         tv.delegate?.textViewDidChange?(tv)
     }
 
+    func scrollToLocation(_ location: Int) {
+        guard let tv = textView else { return }
+        let safe = min(location, tv.text.utf16.count)
+        tv.scrollRangeToVisible(NSRange(location: safe, length: 0))
+        tv.selectedRange = NSRange(location: safe, length: 0)
+    }
+
+    func selectFirstHeadingTitle() {
+        guard let tv = textView,
+              let regex = try? NSRegularExpression(pattern: #"^={1,6}\s+(.+)$"#, options: .anchorsMatchLines),
+              let match = regex.firstMatch(in: tv.text, range: NSRange(location: 0, length: (tv.text as NSString).length)),
+              match.numberOfRanges > 1 else { return }
+        let titleRange = match.range(at: 1)
+        tv.becomeFirstResponder()
+        tv.selectedRange = titleRange
+        tv.scrollRangeToVisible(titleRange)
+    }
+
     /// Inserts or replaces the // @reminder: line in the note.
     func insertOrUpdateReminder(date: Date, replacingSlash: Bool = false) {
         guard let tv = textView else { return }
@@ -307,6 +347,25 @@ class EditorController: ObservableObject {
     }
 }
 
+// ── UITextView subclass that intercepts image paste ───────────────────────────
+
+private class PastableTextView: UITextView {
+    var onImagePaste: ((UIImage) -> Void)?
+
+    override func paste(_ sender: Any?) {
+        if let image = UIPasteboard.general.image {
+            onImagePaste?(image)
+        } else {
+            super.paste(sender)
+        }
+    }
+
+    override func canPerformAction(_ action: Selector, withSender sender: Any?) -> Bool {
+        if action == #selector(paste(_:)) && UIPasteboard.general.image != nil { return true }
+        return super.canPerformAction(action, withSender: sender)
+    }
+}
+
 // ── UITextView wrapper ────────────────────────────────────────────────────────
 
 struct TypstEditor: UIViewRepresentable {
@@ -317,11 +376,14 @@ struct TypstEditor: UIViewRepresentable {
     var onShowPalette: () -> Void = {}
     var onWikiLinkTapped: (String) -> Void = { _ in }
     var onTagPartialChanged: (String?) -> Void = { _ in }
+    var onImagePaste: (UIImage) -> Void = { _ in }
 
     func makeCoordinator() -> Coordinator { Coordinator(self) }
 
     func makeUIView(context: Context) -> UITextView {
-        let tv = UITextView()
+        let tv = PastableTextView()
+        let coordinator = context.coordinator
+        tv.onImagePaste = { image in coordinator.parent.onImagePaste(image) }
         tv.delegate = context.coordinator
         tv.backgroundColor = .clear
         tv.isScrollEnabled = true
@@ -946,6 +1008,58 @@ struct TagSuggestionBar: View {
     }
 }
 
+// ── Table of contents sheet ───────────────────────────────────────────────────
+
+private struct TableOfContentsView: View {
+    let headings: [HeadingEntry]
+    @Binding var isPresented: Bool
+    let onSelect: (HeadingEntry) -> Void
+
+    var body: some View {
+        NavigationStack {
+            Group {
+                if headings.isEmpty {
+                    VStack(spacing: 12) {
+                        Image(systemName: "text.alignleft")
+                            .font(.system(size: 40))
+                            .foregroundStyle(.tertiary)
+                        Text("No headings")
+                            .foregroundStyle(.secondary)
+                        Text("Use = Heading 1, == Heading 2…")
+                            .font(.caption)
+                            .foregroundStyle(.tertiary)
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else {
+                    List(headings) { heading in
+                        Button {
+                            isPresented = false
+                            onSelect(heading)
+                        } label: {
+                            HStack {
+                                let (sz, wt): (CGFloat, Font.Weight) = heading.level == 1 ? (17, .semibold) : heading.level == 2 ? (17, .regular) : (15, .regular)
+                                Text(styledTitle(heading.title, size: sz, weight: wt))
+                                    .foregroundStyle(heading.level == 1 ? Color.primary : heading.level == 2 ? Color.secondary : Color.secondary.opacity(0.7))
+                                    .padding(.leading, CGFloat((heading.level - 1) * 16))
+                                Spacer()
+                            }
+                        }
+                    }
+                }
+            }
+            .navigationTitle("Contents")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") { isPresented = false }
+                }
+            }
+        }
+        .presentationDetents([.medium, .large])
+        .presentationDragIndicator(.visible)
+    }
+}
+
 // ── Note editor view ──────────────────────────────────────────────────────────
 
 struct NoteEditorView: View {
@@ -963,6 +1077,7 @@ struct NoteEditorView: View {
     @State private var showBookmarkInput = false
     @State private var bookmarkURL = ""
     @State private var showReminderPicker = false
+    @State private var showTOC = false
 
     var body: some View {
         ZStack(alignment: .bottom) {
@@ -992,7 +1107,8 @@ struct NoteEditorView: View {
                     .filter { $0.lowercased().hasPrefix(lower) && $0.lowercased() != lower }
                     .sorted()
                 withAnimation { tagSuggestions = filtered }
-            }
+            },
+            onImagePaste: { image in Task { await handlePastedImage(image) } }
         )
 
         if !tagSuggestions.isEmpty {
@@ -1000,9 +1116,23 @@ struct NoteEditorView: View {
                 controller.insertTagCompletion(tag)
             }
         }
+
         } // ZStack
+        .overlay(alignment: .bottomLeading) {
+            Button { showTOC = true } label: {
+                Image(systemName: "list.dash")
+                    .font(.system(size: 16, weight: .medium))
+                    .frame(width: 44, height: 44)
+                    .background(.ultraThinMaterial)
+                    .clipShape(Circle())
+                    .shadow(color: .black.opacity(0.12), radius: 6, x: 0, y: 2)
+            }
+            .foregroundStyle(.secondary)
+            .padding(.leading, 16)
+            .padding(.bottom, 16)
+        }
         .onChange(of: localBody) { _, newValue in noteStore.updateBody(newValue) }
-        .background(backgroundGradient)
+        .background(backgroundGradient.ignoresSafeArea())
         .sheet(isPresented: $showCommandPalette) {
             SlashCommandPalette(isPresented: $showCommandPalette) { cmd in
                 if cmd.id == "image" {
@@ -1075,7 +1205,24 @@ struct NoteEditorView: View {
         } message: {
             Text("Enter a URL to create a bookmark card")
         }
-        .onAppear { localBody = note.body }
+        .sheet(isPresented: $showTOC) {
+            TableOfContentsView(
+                headings: parseHeadings(from: localBody),
+                isPresented: $showTOC
+            ) { heading in
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                    controller.scrollToLocation(heading.charLocation)
+                }
+            }
+        }
+        .onAppear {
+            localBody = note.body
+            if Date().timeIntervalSince(note.createdAt) < 2.0 {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+                    controller.selectFirstHeadingTitle()
+                }
+            }
+        }
         .onChange(of: note.id) { _, _ in localBody = note.body }
     }
 
@@ -1166,29 +1313,33 @@ struct NoteEditorView: View {
         controller.insert(snippet, replacingSlash: false)
     }
 
-    private func handlePickedPhoto(_ item: PhotosPickerItem) async {
-        guard noteStore.syncMode == .server else {
-            imageUploadError = "Image attachments require Server mode. Switch to Server sync in Settings."
-            pickerItem = nil
-            return
-        }
+    private func saveImageData(_ imageData: Data, ext: String) async {
         isUploadingImage = true
-        defer { isUploadingImage = false; pickerItem = nil }
+        defer { isUploadingImage = false }
         do {
-            guard let data = try await item.loadTransferable(type: Data.self) else { return }
-            // Compress to JPEG for consistent cross-platform rendering
-            let imageData: Data
-            let filename: String
-            if let uiImage = UIImage(data: data), let jpeg = uiImage.jpegData(compressionQuality: 0.82) {
-                imageData = jpeg
-                filename = "\(UUID().uuidString).jpg"
-            } else {
-                imageData = data
-                filename = "\(UUID().uuidString).png"
-            }
-            let storedName = try await noteStore.uploadAttachment(noteId: note.id, filename: filename, data: imageData)
+            let filename = "\(UUID().uuidString).\(ext)"
+            let storedName = try await noteStore.saveAttachment(noteId: note.id, filename: filename, data: imageData)
             let snippet = "\n#figure(\n  image(\"attachments/\(note.id)/\(storedName)\"),\n  caption: [],\n)\n"
             controller.insert(snippet)
+        } catch {
+            imageUploadError = "Image failed: \(error.localizedDescription)"
+        }
+    }
+
+    private func handlePastedImage(_ image: UIImage) async {
+        guard let jpeg = image.jpegData(compressionQuality: 0.82) else { return }
+        await saveImageData(jpeg, ext: "jpg")
+    }
+
+    private func handlePickedPhoto(_ item: PhotosPickerItem) async {
+        defer { pickerItem = nil }
+        do {
+            guard let data = try await item.loadTransferable(type: Data.self) else { return }
+            if let uiImage = UIImage(data: data), let jpeg = uiImage.jpegData(compressionQuality: 0.82) {
+                await saveImageData(jpeg, ext: "jpg")
+            } else {
+                await saveImageData(data, ext: "png")
+            }
         } catch {
             imageUploadError = "Upload failed: \(error.localizedDescription)"
         }

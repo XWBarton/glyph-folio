@@ -13,6 +13,7 @@ struct NoteDetailView: View {
 
     var body: some View {
         NoteEditorView(note: note)
+            .toolbar(.hidden, for: .tabBar)
             .navigationTitle(liveTitle)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -23,8 +24,7 @@ struct NoteDetailView: View {
                                 .fill(syncDotColor)
                                 .frame(width: 8, height: 8)
                         }
-                        Text(liveTitle)
-                            .font(.headline)
+                        Text(styledTitle(liveTitle, size: 17, weight: .semibold))
                     }
                 }
                 ToolbarItemGroup(placement: .navigationBarTrailing) {

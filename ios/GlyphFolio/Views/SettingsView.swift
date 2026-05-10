@@ -11,6 +11,8 @@ struct SettingsView: View {
     @State private var testStatus: TestStatus = .idle
     @State private var testMessage = ""
     @State private var showImporter = false
+    @State private var notifStatus: TestStatus = .idle
+    @State private var notifMessage = ""
 
     enum TestStatus { case idle, testing, ok, fail }
 
@@ -94,6 +96,45 @@ struct SettingsView: View {
                     }
                 }
 
+                // ── Reminders ────────────────────────────────────────────────
+                Section {
+                    if noteStore.notificationAuth == .denied {
+                        Label {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Notifications disabled").font(.callout).bold()
+                                Text("Enable in Settings → Notifications → Glyph Folio so reminders can fire.")
+                                    .font(.caption).foregroundStyle(.secondary)
+                            }
+                        } icon: {
+                            Image(systemName: "bell.slash").foregroundStyle(.orange)
+                        }
+                        if let url = URL(string: UIApplication.openSettingsURLString) {
+                            Link("Open Settings", destination: url)
+                        }
+                    }
+                    Button {
+                        Task { await sendTest() }
+                    } label: {
+                        if notifStatus == .testing {
+                            HStack { ProgressView().scaleEffect(0.8); Text("Scheduling…") }
+                        } else if notifStatus == .ok {
+                            Label(notifMessage.isEmpty ? "Scheduled — fires in 5s" : notifMessage,
+                                  systemImage: "checkmark.circle.fill")
+                                .foregroundStyle(.green)
+                        } else if notifStatus == .fail {
+                            Label(notifMessage, systemImage: "xmark.circle.fill")
+                                .foregroundStyle(.red)
+                        } else {
+                            Label("Test notification", systemImage: "bell.badge")
+                        }
+                    }
+                    .disabled(notifStatus == .testing)
+                } header: {
+                    Text("Reminders")
+                } footer: {
+                    Text("Use /remind in a note to set one. Reminders you set on other devices sync when the app is opened.")
+                }
+
                 // ── Data ─────────────────────────────────────────────────────
                 Section("Data") {
                     Button {
@@ -140,6 +181,18 @@ struct SettingsView: View {
                     .fontWeight(.semibold)
                 }
             }
+        }
+    }
+
+    private func sendTest() async {
+        notifStatus = .testing
+        notifMessage = ""
+        if let error = await noteStore.sendTestNotification() {
+            notifStatus = .fail
+            notifMessage = error
+        } else {
+            notifStatus = .ok
+            notifMessage = "Scheduled — fires in 5s"
         }
     }
 

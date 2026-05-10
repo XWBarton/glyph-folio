@@ -79,6 +79,49 @@ func tagHashColor(_ tag: String) -> Color {
     return Color(hex: tagColorPalette[Int(h % UInt32(tagColorPalette.count))])
 }
 
+// ── Typst title rendering ─────────────────────────────────────────────────────
+
+func styledTitle(_ raw: String, size: CGFloat = 15, weight: Font.Weight = .medium) -> AttributedString {
+    let base     = Font.system(size: size, weight: weight)
+    let bold     = Font.system(size: size, weight: .bold)
+    let ital     = Font.system(size: size, weight: weight).italic()
+    let boldItal = Font.system(size: size, weight: .bold).italic()
+
+    guard let regex = try? NSRegularExpression(
+        pattern: #"\*_([^_*\n]+)_\*|_\*([^*_\n]+)\*_|\*([^*\n]+)\*|_([^_\n]+)_"#
+    ) else {
+        var a = AttributedString(raw); a.font = base; return a
+    }
+
+    var result = AttributedString()
+    let ns = raw as NSString
+    var cursor = 0
+
+    for m in regex.matches(in: raw, range: NSRange(location: 0, length: ns.length)) {
+        if m.range.location > cursor {
+            var seg = AttributedString(ns.substring(with: NSRange(location: cursor, length: m.range.location - cursor)))
+            seg.font = base; result += seg
+        }
+        var matchedText = ""
+        var font = base
+        for g in 1...4 {
+            let r = m.range(at: g)
+            guard r.location != NSNotFound else { continue }
+            matchedText = ns.substring(with: r)
+            font = g == 1 || g == 2 ? boldItal : g == 3 ? bold : ital
+            break
+        }
+        var seg = AttributedString(matchedText); seg.font = font; result += seg
+        cursor = m.range.location + m.range.length
+    }
+
+    if cursor < ns.length {
+        var seg = AttributedString(ns.substring(with: NSRange(location: cursor, length: ns.length - cursor)))
+        seg.font = base; result += seg
+    }
+    return result
+}
+
 // ── Shake detection ───────────────────────────────────────────────────────────
 
 extension NSNotification.Name {

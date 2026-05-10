@@ -49,15 +49,22 @@ function cleanupTempFiles(files: string[]): void {
   }
 }
 
+const WIKILINK_DEF =
+  '#let wikilink(it) = box(fill: rgb("#eff6ff"), stroke: 0.5pt + rgb("#93c5fd"), ' +
+  'radius: 3pt, inset: (x: 3pt, y: 1pt), baseline: 1pt)' +
+  '[#text(fill: rgb("#1d4ed8"), size: 0.9em)[#it]]\n'
+
 /**
  * Compile a note body directly. The body is expected to contain its own
  * page/text setup and header (generated when the note is created).
- * Wiki link syntax [[...]] is stripped to plain text before compilation.
+ * Wiki links [[...]] are rendered as styled #wikilink[...] boxes.
  */
 export async function compileNote(body: string): Promise<CompileResult> {
-  const cleanBody = body
-    .replace(/\[\[([^\]]+)\]\]/g, '$1')
-    .replace(/^---$/gm, '#line(length: 100%)')
+  const hasLinks = /\[\[/.test(body)
+  const cleanBody = (hasLinks ? WIKILINK_DEF : '')
+    + body
+      .replace(/\[\[([^\]]+)\]\]/g, '#wikilink[$1]')
+      .replace(/^---$/gm, '#line(length: 100%)')
   return compileTypst(cleanBody)
 }
 

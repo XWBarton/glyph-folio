@@ -7,6 +7,10 @@ enum SyncStatus {
     case synced, syncing, offline
 }
 
+enum NotificationAuthState {
+    case unknown, authorized, denied, provisional, ephemeral, notDetermined
+}
+
 @MainActor
 class NoteStore: ObservableObject {
     @Published var notes: [Note] = []
@@ -14,6 +18,7 @@ class NoteStore: ObservableObject {
     @Published var isLoading = false
     @Published var syncMode: AppSettings.SyncMode = AppSettings.shared.syncMode
     @Published var syncStatus: SyncStatus = .synced
+    @Published var notificationAuth: NotificationAuthState = .unknown
 
     private var provider: SyncProvider { makeProvider() }
     private var autoSaveTask: Task<Void, Never>?
@@ -415,6 +420,23 @@ class NoteStore: ObservableObject {
         return try await provider.uploadAttachment(noteId: noteId, filename: filename, data: data)
     }
 
+    /// Save an image attachment locally (works for all sync modes) and upload
+    /// to the server as well if the current sync mode is server.
+    func saveAttachment(noteId: String, filename: String, data: Data) async throws -> String {
+        guard let dir = provider.notesDirectory() else {
+            throw SyncError.fileError("Notes directory unavailable.")
+        }
+        let attDir = dir.appendingPathComponent("attachments/\(noteId)", isDirectory: true)
+        try FileManager.default.createDirectory(at: attDir, withIntermediateDirectories: true)
+        try data.write(to: attDir.appendingPathComponent(filename))
+        if syncMode == .server {
+            let bgTask = UIApplication.shared.beginBackgroundTask(withName: "glyph-upload") { }
+            defer { UIApplication.shared.endBackgroundTask(bgTask) }
+            _ = try? await provider.uploadAttachment(noteId: noteId, filename: filename, data: data)
+        }
+        return filename
+    }
+
     // ── Share source ──────────────────────────────────────────────────────────
 
     /// Build a shareable item for the note: a bare .typ URL when no attachments
@@ -574,6 +596,47 @@ class NoteStore: ObservableObject {
         let request = UNNotificationRequest(identifier: "glyph-reminder-\(note.id)", content: content, trigger: trigger)
         center.add(request) { error in
             if let error { print("Reminder schedule error:", error) }
+        }
+    }
+
+    /// Query the system for the current notification authorization state.
+    func refreshNotificationAuth() async {
+        let settings = await UNUserNotificationCenter.current().notificationSettings()
+        let state: NotificationAuthState
+        switch settings.authorizationStatus {
+        case .authorized:    state = .authorized
+        case .denied:        state = .denied
+        case .provisional:   state = .provisional
+        case .ephemeral:     state = .ephemeral
+        case .notDetermined: state = .notDetermined
+        @unknown default:    state = .unknown
+        }
+        notificationAuth = state
+    }
+
+    /// Schedule a 5-second test notification. Returns nil on success or an error message.
+    func sendTestNotification() async -> String? {
+        await refreshNotificationAuth()
+        if notificationAuth == .denied {
+            return "Notifications are disabled for Glyph Folio. Enable them in Settings → Notifications → Glyph Folio."
+        }
+        if notificationAuth == .notDetermined {
+            let granted = (try? await UNUserNotificationCenter.current()
+                .requestAuthorization(options: [.alert, .badge, .sound])) ?? false
+            await refreshNotificationAuth()
+            if !granted { return "Notification permission was not granted." }
+        }
+        let content = UNMutableNotificationContent()
+        content.title = "Glyph Folio"
+        content.body = "Test notification — if you see this, reminders will work."
+        content.sound = .default
+        let trigger = UNTimeIntervalNotificationTrigger(timeInterval: 5, repeats: false)
+        let request = UNNotificationRequest(identifier: "glyph-reminder-test", content: content, trigger: trigger)
+        do {
+            try await UNUserNotificationCenter.current().add(request)
+            return nil
+        } catch {
+            return "Failed to schedule: \(error.localizedDescription)"
         }
     }
 

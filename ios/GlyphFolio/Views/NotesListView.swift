@@ -85,8 +85,7 @@ private struct NoteRowView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 3) {
-            Text(note.title)
-                .font(.system(size: 15, weight: .medium))
+            Text(styledTitle(note.title))
                 .lineLimit(1)
             if let snippet = bodySnippet {
                 Text(snippet)

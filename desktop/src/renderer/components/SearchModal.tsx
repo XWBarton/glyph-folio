@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import type { NoteMeta } from '../hooks/useNotes'
 import { GraphView } from './GraphView'
+import { renderTypstTitle } from '../lib/typstTitle'
 
 interface SearchResult extends NoteMeta {
   excerpt: string
@@ -362,7 +363,7 @@ export function SearchModal({ open, notes, activeNoteId, onClose, onSelect, onCr
                     overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                     flex: 1,
                   }}>
-                    {note.title}
+                    {renderTypstTitle(note.title)}
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
                     <span style={{ fontSize: 11, color: 'var(--overlay)' }}>

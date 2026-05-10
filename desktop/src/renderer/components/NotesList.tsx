@@ -1,5 +1,6 @@
 import React, { useState } from 'react'
 import type { NoteMeta, Note } from '../hooks/useNotes'
+import { renderTypstTitle } from '../lib/typstTitle'
 
 interface Props {
   notes: NoteMeta[]
@@ -123,7 +124,7 @@ export function NotesList({ notes, activeNote, activeId, onSelect, onCreate, onD
               onContextMenu={e => { e.preventDefault(); setContextMenu({ x: e.clientX, y: e.clientY, note }) }}
             >
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
-                <div className="note-row-title">{note.title}</div>
+                <div className="note-row-title">{renderTypstTitle(note.title)}</div>
                 <div className="note-row-date">{relativeTime(note.modifiedAt)}</div>
               </div>
 

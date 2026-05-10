@@ -125,8 +125,10 @@ export function useNotes() {
   // ── Create note ─────────────────────────────────────────────────────────────
 
   const createNote = useCallback(async (title?: string) => {
+    const active = stateRef.current.activeNote
     const note = await window.api.notesCreate(title)
     const notes = await window.api.notesList()
+    if (active) setHistory(prev => [active.id, ...prev.filter(id => id !== note.id)].slice(0, 10))
     setState(s => ({ ...s, notes, activeNote: note }))
     return note
   }, [])

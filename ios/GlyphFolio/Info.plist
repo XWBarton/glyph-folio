@@ -86,6 +86,7 @@
   <key>BGTaskSchedulerPermittedIdentifiers</key>
   <array>
     <string>com.glyph.folio.reminder-sync</string>
+    <string>com.glyph.folio.reminder-process</string>
   </array>
 </dict>
 </plist>

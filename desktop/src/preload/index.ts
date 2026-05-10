@@ -77,6 +77,7 @@ export interface FolioAPI {
   reminderSet(noteId: string, noteTitle: string, scheduledAt: string): Promise<void>
   reminderCancel(noteId: string): Promise<void>
   reminderGet(noteId: string): Promise<{ noteId: string; noteTitle: string; scheduledAt: string } | null>
+  reminderTest(): Promise<{ supported: boolean; shown: boolean; error?: string }>
 }
 
 const api: FolioAPI = {
@@ -147,6 +148,7 @@ const api: FolioAPI = {
   reminderSet: (noteId, noteTitle, scheduledAt) => ipcRenderer.invoke('reminder:set', noteId, noteTitle, scheduledAt),
   reminderCancel: (noteId) => ipcRenderer.invoke('reminder:cancel', noteId),
   reminderGet: (noteId) => ipcRenderer.invoke('reminder:get', noteId),
+  reminderTest: () => ipcRenderer.invoke('reminder:test'),
   onFullscreenChange: (cb) => {
     const handler = (_: IpcRendererEvent, isFullscreen: boolean) => cb(isFullscreen)
     ipcRenderer.on('window:fullscreen', handler)

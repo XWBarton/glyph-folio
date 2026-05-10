@@ -167,9 +167,12 @@ actor ServerSyncProvider: SyncProvider {
             throw SyncError.networkError("Invalid server URL")
         }
 
-        // Strip wikilinks and convert --- dividers before compilation, matching desktop behaviour
-        let content = note.body
-            .replacingOccurrences(of: #"\[\[([^\]]+)\]\]"#, with: "$1", options: .regularExpression)
+        // Render wikilinks as styled boxes; convert --- dividers
+        let wikilinkDef = note.body.range(of: "[[", options: .literal) != nil
+            ? "#let wikilink(it) = box(fill: rgb(\"#eff6ff\"), stroke: 0.5pt + rgb(\"#93c5fd\"), radius: 3pt, inset: (x: 3pt, y: 1pt), baseline: 1pt)[#text(fill: rgb(\"#1d4ed8\"), size: 0.9em)[#it]]\n"
+            : ""
+        let content = wikilinkDef + note.body
+            .replacingOccurrences(of: #"\[\[([^\]]+)\]\]"#, with: "#wikilink[$1]", options: .regularExpression)
             .replacingOccurrences(of: #"(?m)^---$"#, with: "#line(length: 100%)", options: .regularExpression)
 
         var request = URLRequest(url: url)

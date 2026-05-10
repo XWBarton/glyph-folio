@@ -59,6 +59,9 @@ function createWindow(): void {
   mainWindow.on('leave-full-screen', () => sendFullscreen(false))
 }
 
+// Needed for Windows toast notifications to group correctly; harmless elsewhere.
+if (process.platform === 'win32') app.setAppUserModelId('com.glyph.folio')
+
 app.whenReady().then(() => {
   if (process.platform === 'darwin') {
     const bases = [app.getAppPath(), join(__dirname, '..', '..')]
