@@ -26,6 +26,8 @@ export default function App() {
   const [lastSaved, setLastSaved] = useState<Date | null>(null)
   const [isDirty, setIsDirty] = useState(false)
   const [focusTitleKey, setFocusTitleKey] = useState(0)
+  const [countMode, setCountMode] = useState<'words' | 'chars'>('words')
+  const [selectedText, setSelectedText] = useState('')
 
   const [settingsLoaded, setSettingsLoaded] = useState(false)
 
@@ -135,6 +137,8 @@ export default function App() {
     }, 2100)
     return () => clearTimeout(t)
   }, [body]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => { setSelectedText('') }, [activeNote?.id])
 
   // ── Body change handler ───────────────────────────────────────────────────────
   const handleBodyChange = useCallback((newBody: string) => {
@@ -333,24 +337,36 @@ export default function App() {
                 onDropImage={handleDropImage}
                 onPasteImage={handlePasteImage}
                 focusTitleKey={focusTitleKey}
+                onSelectionChange={setSelectedText}
               />
             ) : (
               <EmptyState onOpen={() => setSearchOpen(true)} isLoading={isLoading} />
             )}
             {activeNote && (
-              <div style={{
-                position: 'absolute', bottom: 10, left: 10,
-                fontSize: 11, color: 'var(--subtext)',
-                background: 'rgba(255,255,255,0.7)',
-                backdropFilter: 'blur(12px)',
-                WebkitBackdropFilter: 'blur(12px)',
-                border: '1px solid rgba(255,255,255,0.8)',
-                borderRadius: 20,
-                padding: '3px 10px',
-                boxShadow: '0 1px 4px rgba(0,0,0,0.06)',
-                userSelect: 'none',
-              }}>
-                {wordCount(activeNote.body).toLocaleString()} words
+              <div
+                onClick={() => setCountMode(m => m === 'words' ? 'chars' : 'words')}
+                title={`Click to show ${countMode === 'words' ? 'character' : 'word'} count`}
+                style={{
+                  position: 'absolute', bottom: 10, left: 10,
+                  fontSize: 11, color: 'var(--subtext)',
+                  background: 'rgba(255,255,255,0.7)',
+                  backdropFilter: 'blur(12px)',
+                  WebkitBackdropFilter: 'blur(12px)',
+                  border: '1px solid rgba(255,255,255,0.8)',
+                  borderRadius: 20,
+                  padding: '3px 10px',
+                  boxShadow: '0 1px 4px rgba(0,0,0,0.06)',
+                  userSelect: 'none',
+                  cursor: 'pointer',
+                }}
+              >
+                {(() => {
+                  const base  = selectedText !== '' ? selectedText : activeNote.body
+                  const count = countMode === 'words' ? wordCount(base) : charCount(base)
+                  const unit  = countMode === 'words' ? 'words' : 'chars'
+                  const pfx   = selectedText !== '' ? 'selected ' : ''
+                  return `${count.toLocaleString()} ${pfx}${unit}`
+                })()}
               </div>
             )}
             <FontSizeControl
@@ -429,6 +445,10 @@ function wordCount(body: string): number {
     .replace(/={1,6}\s/g, ' ')
     .replace(/[*_`[\]()]/g, ' ')
   return text.trim() ? text.trim().split(/\s+/).filter(s => /\w/.test(s)).length : 0
+}
+
+function charCount(body: string): number {
+  return body.length
 }
 
 function FontSizeControl({ fontSize, onChange }: { fontSize: number; onChange: (fs: number) => void }) {

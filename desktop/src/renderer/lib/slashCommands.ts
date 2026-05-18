@@ -19,7 +19,9 @@ export const SLASH_COMMANDS: SlashCommand[] = [
   { id: 'italic', label: 'Italic', description: '_italic text_', icon: 'I', category: 'text', snippet: '_${1:italic}_$0', keywords: ['italic', 'em', 'i'] },
   { id: 'link', label: 'Link', description: 'Hyperlink with label', icon: '↗', category: 'text', snippet: '#link("${1:https://}")[$2]$0', keywords: ['link', 'url', 'href', 'a'] },
   { id: 'highlight', label: 'Highlight', description: 'Highlighted text', icon: '◐', category: 'text', snippet: '#highlight[${1:text}]$0', keywords: ['highlight', 'mark'] },
-  { id: 'strike', label: 'Strikethrough', description: 'Struck-out text', icon: 'S̶', category: 'text', snippet: '#strike[${1:text}]$0', keywords: ['strike', 'strikethrough', 'del'] },
+  { id: 'strike',      label: 'Strikethrough', description: 'Struck-out text',  icon: 'S̶', category: 'text', snippet: '#strike[${1:text}]$0',   keywords: ['strike', 'strikethrough', 'del'] },
+  { id: 'subscript',   label: 'Subscript',     description: '#sub[text]',        icon: 'X₂', category: 'text', snippet: '#sub[${1:text}]$0',   keywords: ['subscript', 'sub', 'lower'] },
+  { id: 'superscript', label: 'Superscript',   description: '#super[text]',      icon: 'X²', category: 'text', snippet: '#super[${1:text}]$0', keywords: ['superscript', 'super', 'upper'] },
 
   // Structure — all structure items together so flat-array order matches visual (grouped) order
   { id: 'bullet',    label: 'Bullet list',  description: 'Unordered list',                               icon: '•',  category: 'structure', snippet: '- $1\n- $2\n- $0',                                                                                                                                                    keywords: ['list', 'bullet', 'ul', 'unordered'] },

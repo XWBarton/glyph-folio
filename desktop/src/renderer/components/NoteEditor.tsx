@@ -43,6 +43,18 @@ if (!document.getElementById('glyph-folio-suggest-overrides')) {
   document.head.appendChild(style)
 }
 
+if (!document.getElementById('glyph-folio-wiki-badge-style')) {
+  const style = document.createElement('style')
+  style.id = 'glyph-folio-wiki-badge-style'
+  style.textContent = `
+    .wiki-link-badge { background: rgba(37, 99, 235, 0.10); border-radius: 4px; }
+    @media (prefers-color-scheme: dark) {
+      .wiki-link-badge { background: rgba(96, 165, 250, 0.15); }
+    }
+  `
+  document.head.appendChild(style)
+}
+
 interface PaletteState {
   open: boolean; x: number; y: number
   commands: SlashCommand[]; selectedIndex: number
@@ -74,11 +86,13 @@ interface Props {
   onDropImage: (srcPath: string) => Promise<string | null>
   onPasteImage: (bytes: Uint8Array, ext: string) => Promise<string | null>
   focusTitleKey?: number
+  onSelectionChange?: (text: string) => void
 }
 
 export function NoteEditor({
   value, onChange, tokenColors, fontSize, spellCheckEnabled, onToggleSpellIgnore,
-  customDictionary, onAddToDict, notes, onNavigate, noteId, onPickImage, onDropImage, onPasteImage, focusTitleKey
+  customDictionary, onAddToDict, notes, onNavigate, noteId, onPickImage, onDropImage, onPasteImage, focusTitleKey,
+  onSelectionChange
 }: Props) {
   const [isDark, setIsDark] = useState(() => window.matchMedia('(prefers-color-scheme: dark)').matches)
 
@@ -157,6 +171,9 @@ export function NoteEditor({
   onDropImageRef.current = onDropImage
   const onPasteImageRef = useRef(onPasteImage)
   onPasteImageRef.current = onPasteImage
+  const onSelectionChangeRef = useRef(onSelectionChange)
+  onSelectionChangeRef.current = onSelectionChange
+  const wikiDecoCollRef = useRef<editor.IEditorDecorationsCollection | null>(null)
 
   const [spellToast, setSpellToast] = useState<'enabled' | 'disabled' | null>(null)
   const spellEnabledRef = useRef(spellCheckEnabled)
@@ -624,8 +641,56 @@ export function NoteEditor({
       ed.focus()
     }
 
+    const wrapWithFunction = (fnName: string) => {
+      const model = ed.getModel(); const sel = ed.getSelection()
+      if (!model || !sel) return
+      if (sel.isEmpty()) {
+        const pos = sel.getStartPosition()
+        const insertText = `#${fnName}[]`
+        ed.executeEdits('folio-format', [{
+          range: new monaco.Range(pos.lineNumber, pos.column, pos.lineNumber, pos.column),
+          text: insertText
+        }])
+        ed.setPosition({ lineNumber: pos.lineNumber, column: pos.column + fnName.length + 2 })
+        ed.focus(); return
+      }
+      const selected = model.getValueInRange(sel)
+      ed.executeEdits('folio-format', [{ range: sel, text: `#${fnName}[${selected}]` }])
+      ed.focus()
+    }
+
+    const applyWikiDecorations = () => {
+      const model = ed.getModel()
+      if (!model) return
+      const text = model.getValue()
+      const decorations: editor.IModelDeltaDecoration[] = []
+      const re = /\[\[[^\]]*\]\]/g
+      let m: RegExpExecArray | null
+      while ((m = re.exec(text)) !== null) {
+        const startPos = model.getPositionAt(m.index)
+        const endPos   = model.getPositionAt(m.index + m[0].length)
+        decorations.push({
+          range: new monaco.Range(startPos.lineNumber, startPos.column, endPos.lineNumber, endPos.column),
+          options: {
+            inlineClassName: 'wiki-link-badge',
+            stickiness: monaco.editor.TrackedRangeStickiness.NeverGrowsWhenTypingAtEdges,
+          }
+        })
+      }
+      if (!wikiDecoCollRef.current) {
+        wikiDecoCollRef.current = ed.createDecorationsCollection(decorations)
+      } else {
+        wikiDecoCollRef.current.set(decorations)
+      }
+    }
+    applyWikiDecorations()
+    ed.onDidChangeModelContent(() => applyWikiDecorations())
+    ed.onDidChangeModel(() => applyWikiDecorations())
+
     ed.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyB, () => wrapWithMarker('*'))
     ed.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyI, () => wrapWithMarker('_'))
+    ed.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.Comma,  () => wrapWithFunction('sub'))
+    ed.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.Period, () => wrapWithFunction('super'))
 
     ed.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.KeyS, () => {
       onToggleSpellRef.current?.()
@@ -830,6 +895,12 @@ export function NoteEditor({
       const slash = slashPosRef.current; if (!slash) return
       if (e.position.lineNumber !== slash.lineNumber || e.position.column < slash.column) closePalette()
     })
+
+    ed.onDidChangeCursorSelection(() => {
+      const model = ed.getModel(); const sel = ed.getSelection()
+      if (!model || !sel) return
+      onSelectionChangeRef.current?.(sel.isEmpty() ? '' : model.getValueInRange(sel))
+    })
   }, [closePalette])
 
   useEffect(() => {
@@ -858,6 +929,20 @@ export function NoteEditor({
       ed.focus()
     }, 150)
   }, [focusTitleKey])
+
+  // Re-sync Monaco focus state when the Electron window regains focus
+  useEffect(() => {
+    const handler = () => {
+      const ed = editorRef.current
+      if (!ed) return
+      const domNode = ed.getDomNode()
+      if (domNode && (domNode === document.activeElement || domNode.contains(document.activeElement))) {
+        ed.focus()
+      }
+    }
+    window.addEventListener('focus', handler)
+    return () => window.removeEventListener('focus', handler)
+  }, [])
 
   // ── Image drag-and-drop ──────────────────────────────────────────────────────
   useEffect(() => {
