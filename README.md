@@ -11,7 +11,7 @@ Personal Typst note-taking system. Write notes in Typst markup on your Desktop o
 - **Word export** (desktop) — export any note as a formatted `.docx`, with numbered figure/table captions, live clickable cross-references, and a generated citations/bibliography section
 - **Citations & bibliography** — drop a `.bib` file in your notes folder and cite from it with `@key` (narrative — "Masson et al. (2021) said…") or `[@key]` (parenthetical — "(Masson et al., 2021)"); pick Numbered or Author-Date style in Settings and the reference list is generated automatically
 - **Figures, tables & cross-references** — `/image` and `/table` insert numbered, captioned figures and tables; reference them anywhere with `@fig:label` / `@tab:label` for auto-numbered, clickable in-PDF links
-- **Reminders** — `/remind` (or a `// @reminder:` line) schedules a native OS notification for a note
+- **Reminders** — `/remind` (or a `// @reminder:` line) schedules a native OS notification for a note (in progress)
 - **Tag system** — add `// @tags: tag1, tag2` to any note; browse and filter by tag in the Explore tab
 - **Slash commands** — type `/` anywhere to open a command palette with headings, lists, code blocks, math, checkboxes, wiki links, and more
 - **Wiki links** — link notes with `[[Note Title]]`, shown as styled badges in both the editor and the exported PDF; the graph view visualises connections
