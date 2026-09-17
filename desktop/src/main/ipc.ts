@@ -4,11 +4,12 @@ import { readFileSync, writeFileSync, existsSync, readdirSync } from 'fs'
 import { basename, join, dirname } from 'path'
 import { execFileSync } from 'child_process'
 import { compileNote } from './compiler'
+import { compileDocx } from './docxExport'
 import {
-  listNotes, readNote, writeNote, upsertNote, deleteNote, createNote, exportNotePdf, resolveNotesDir, searchNotes,
+  listNotes, readNote, writeNote, upsertNote, deleteNote, createNote, exportNotePdf, exportNoteDocx, resolveNotesDir, searchNotes,
   listAttachments, readAttachmentBuffer, writeAttachmentBuffer, deleteAttachmentFile,
   pickAndSaveAttachment, saveFileAsAttachment, renameWikiLinks, importNote,
-  extractTitle
+  extractTitle, listBibFiles
 } from './notesManager'
 import { getStore } from './store'
 import { net } from 'electron'
@@ -85,6 +86,18 @@ export function registerIpcHandlers(): void {
     return exportNotePdf(pdfBytes, suggestedName)
   })
 
+  ipcMain.handle('notes:export-docx', async (_event, filePath: string, suggestedName: string) => {
+    const note = readNote(filePath)
+    if (!note) return { success: false, error: 'Note not found' }
+    const citationStyle = getStore().get('citationStyle')
+    try {
+      const buffer = await compileDocx(note, citationStyle)
+      return exportNoteDocx(buffer, suggestedName)
+    } catch (e) {
+      return { success: false, error: String(e) }
+    }
+  })
+
   ipcMain.handle('notes:dir', async () => {
     return resolveNotesDir()
   })
@@ -97,8 +110,13 @@ export function registerIpcHandlers(): void {
     return renameWikiLinks(oldTitle, newTitle, excludeFilePath)
   })
 
+  ipcMain.handle('bib:list', async () => {
+    return listBibFiles()
+  })
+
   ipcMain.handle('typst:compile-note', async (_event, body: string) => {
-    const result = await compileNote(body)
+    const citationStyle = getStore().get('citationStyle')
+    const result = await compileNote(body, citationStyle)
     if ('pdfBytes' in result) {
       return { pdfBytes: Array.from(result.pdfBytes) }
     }

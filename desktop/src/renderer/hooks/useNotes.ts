@@ -1,4 +1,5 @@
 import { useState, useCallback, useEffect, useRef } from 'react'
+import { parseBib, type BibEntry } from '../lib/bibParser'
 
 // Navigation history: array of note IDs, most recently visited first (excluding current)
 
@@ -31,6 +32,7 @@ export function useNotes() {
     isLoading: true
   })
   const [history, setHistory] = useState<string[]>([])
+  const [bibEntries, setBibEntries] = useState<BibEntry[]>([])
 
   const stateRef = useRef(state)
   stateRef.current = state
@@ -48,11 +50,23 @@ export function useNotes() {
     refreshNotes()
   }, [refreshNotes])
 
+  // ── Load bibliography entries ────────────────────────────────────────────────
+
+  const refreshBib = useCallback(async () => {
+    const raw = await window.api.bibList()
+    setBibEntries(raw.flatMap(parseBib))
+  }, [])
+
+  useEffect(() => {
+    refreshBib()
+  }, [refreshBib])
+
   // ── Listen for external file changes (iCloud / server sync arriving) ────────
 
   useEffect(() => {
     return window.api.onNotesChanged(async (_event, changedPath) => {
       await refreshNotes()
+      await refreshBib()
       // If the currently active note changed externally, reload its body
       const active = stateRef.current.activeNote
       if (active && active.filePath === changedPath) {
@@ -65,7 +79,7 @@ export function useNotes() {
         }
       }
     })
-  }, [refreshNotes])
+  }, [refreshNotes, refreshBib])
 
   // ── Auto-save active note 2s after last change ───────────────────────────
 
@@ -173,6 +187,7 @@ export function useNotes() {
     activeNote: state.activeNote,
     isLoading: state.isLoading,
     history,
+    bibEntries,
     selectNote,
     updateBody,
     createNote,

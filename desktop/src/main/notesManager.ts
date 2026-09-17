@@ -3,6 +3,7 @@ import {
   readdirSync, readFileSync, writeFileSync, unlinkSync,
   existsSync, mkdirSync, statSync, rmSync, copyFileSync, utimesSync
 } from 'fs'
+import { readdir, readFile, stat } from 'fs/promises'
 import { join, basename, extname } from 'path'
 import { execFileSync } from 'child_process'
 import chokidar, { FSWatcher } from 'chokidar'
@@ -80,26 +81,63 @@ function extractLinks(body: string): string[] {
 
 // ── CRUD ─────────────────────────────────────────────────────────────────────
 
-export function listNotes(): NoteMeta[] {
+export async function listNotes(): Promise<NoteMeta[]> {
   const dir = resolveNotesDir()
-  const files = readdirSync(dir).filter(f => extname(f) === '.typ' && !f.startsWith('.'))
-  return files.map(f => {
+  const files = (await readdir(dir)).filter(f => extname(f) === '.typ' && !f.startsWith('.'))
+  const notes = await Promise.all(files.map(async f => {
     const filePath = join(dir, f)
     const id = basename(f, '.typ')
-    const stat = statSync(filePath)
+    const fileStat = await stat(filePath)
     let body = ''
-    try { body = readFileSync(filePath, 'utf8') } catch {}
-    const datePrefix = id.match(/^(\d{4}-\d{2}-\d{2})/)?.[1] ?? stat.birthtime.toISOString().slice(0, 10)
+    try { body = await readFile(filePath, 'utf8') } catch {}
+    const datePrefix = id.match(/^(\d{4}-\d{2}-\d{2})/)?.[1] ?? fileStat.birthtime.toISOString().slice(0, 10)
     return {
       id,
       title: extractTitle(body, id),
       tags: extractTags(body),
       links: extractLinks(body),
       createdAt: new Date(datePrefix).toISOString(),
-      modifiedAt: stat.mtime.toISOString(),
+      modifiedAt: fileStat.mtime.toISOString(),
       filePath
     }
-  }).sort((a, b) => new Date(b.modifiedAt).getTime() - new Date(a.modifiedAt).getTime())
+  }))
+  return notes.sort((a, b) => new Date(b.modifiedAt).getTime() - new Date(a.modifiedAt).getTime())
+}
+
+// ── Bibliography files ───────────────────────────────────────────────────────
+
+export async function listBibFiles(): Promise<string[]> {
+  const dir = resolveNotesDir()
+  const files = (await readdir(dir)).filter(f => f.toLowerCase().endsWith('.bib'))
+  const contents = await Promise.all(files.map(async f => {
+    try { return await readFile(join(dir, f), 'utf8') } catch { return '' }
+  }))
+  return contents.filter(Boolean)
+}
+
+/** Filenames (relative to the notes dir) of all .bib files — used to build a Typst #bibliography() call. */
+export function listBibFilenames(): string[] {
+  const dir = resolveNotesDir()
+  try {
+    return readdirSync(dir).filter(f => f.toLowerCase().endsWith('.bib'))
+  } catch {
+    return []
+  }
+}
+
+/** All citation keys defined across every .bib file in the notes dir. */
+export function listBibKeys(): Set<string> {
+  const dir = resolveNotesDir()
+  const keys = new Set<string>()
+  for (const f of listBibFilenames()) {
+    try {
+      const content = readFileSync(join(dir, f), 'utf8')
+      const re = /@\w+\s*\{\s*([^,\s]+)\s*,/g
+      let m: RegExpExecArray | null
+      while ((m = re.exec(content)) !== null) keys.add(m[1])
+    } catch {}
+  }
+  return keys
 }
 
 export function readNote(filePath: string): Note | null {
@@ -267,20 +305,19 @@ export function saveFileAsAttachment(
   return { filename }
 }
 
-export function searchNotes(query: string): SearchResult[] {
+export async function searchNotes(query: string): Promise<SearchResult[]> {
   const q = query.toLowerCase().trim()
   if (!q) return []
   const dir = resolveNotesDir()
-  const files = readdirSync(dir).filter(f => extname(f) === '.typ' && !f.startsWith('.'))
-  const results: SearchResult[] = []
+  const files = (await readdir(dir)).filter(f => extname(f) === '.typ' && !f.startsWith('.'))
 
-  for (const f of files) {
+  const results = await Promise.all(files.map(async (f): Promise<SearchResult | null> => {
     const filePath = join(dir, f)
     const id = basename(f, '.typ')
     let body = ''
-    let stat
-    try { body = readFileSync(filePath, 'utf8'); stat = statSync(filePath) } catch { continue }
-    const datePrefix = id.match(/^(\d{4}-\d{2}-\d{2})/)?.[1] ?? stat!.birthtime.toISOString().slice(0, 10)
+    let fileStat
+    try { body = await readFile(filePath, 'utf8'); fileStat = await stat(filePath) } catch { return null }
+    const datePrefix = id.match(/^(\d{4}-\d{2}-\d{2})/)?.[1] ?? fileStat.birthtime.toISOString().slice(0, 10)
     const title = extractTitle(body, id)
     const tags = extractTags(body)
     const links = extractLinks(body)
@@ -291,10 +328,10 @@ export function searchNotes(query: string): SearchResult[] {
     const bodyIdx = bodyLower.indexOf(q)
     const bodyMatch = bodyIdx !== -1 && !titleMatch && !tagMatch
 
-    if (!titleMatch && !tagMatch && bodyIdx === -1) continue
+    if (!titleMatch && !tagMatch && bodyIdx === -1) return null
 
     let excerpt = ''
-    let matchedIn: SearchResult['matchedIn'] = titleMatch ? 'title' : tagMatch ? 'tags' : 'body'
+    const matchedIn: SearchResult['matchedIn'] = titleMatch ? 'title' : tagMatch ? 'tags' : 'body'
     if (bodyMatch) {
       const start = Math.max(0, bodyIdx - 40)
       const end = Math.min(body.length, bodyIdx + q.length + 80)
@@ -302,15 +339,17 @@ export function searchNotes(query: string): SearchResult[] {
       excerpt = (start > 0 ? '…' : '') + raw + (end < body.length ? '…' : '')
     }
 
-    results.push({
+    return {
       id, title, tags, links,
       createdAt: new Date(datePrefix).toISOString(),
-      modifiedAt: stat!.mtime.toISOString(),
+      modifiedAt: fileStat.mtime.toISOString(),
       filePath, excerpt, matchedIn
-    })
-  }
+    }
+  }))
 
-  return results.sort((a, b) => new Date(b.modifiedAt).getTime() - new Date(a.modifiedAt).getTime())
+  return results
+    .filter((r): r is SearchResult => r !== null)
+    .sort((a, b) => new Date(b.modifiedAt).getTime() - new Date(a.modifiedAt).getTime())
 }
 
 function escapeRegex(s: string): string {
@@ -472,6 +511,23 @@ export async function exportNotePdf(
   }
 }
 
+export async function exportNoteDocx(
+  docxBuffer: Buffer,
+  suggestedName: string
+): Promise<{ success: boolean; error?: string }> {
+  const result = await dialog.showSaveDialog({
+    defaultPath: suggestedName,
+    filters: [{ name: 'Word Document', extensions: ['docx'] }]
+  })
+  if (result.canceled || !result.filePath) return { success: false }
+  try {
+    writeFileSync(result.filePath, docxBuffer)
+    return { success: true }
+  } catch (e) {
+    return { success: false, error: String(e) }
+  }
+}
+
 // ── Import ───────────────────────────────────────────────────────────────────
 
 function safeNotePath(dir: string, dateStr: string, slug: string): { id: string; filePath: string } {
@@ -587,7 +643,7 @@ export function startWatcher(
   onChange: (event: 'add' | 'change' | 'unlink', filePath: string) => void
 ): void {
   const dir = resolveNotesDir()
-  watcher = chokidar.watch(join(dir, '[!.]*.typ'), {
+  watcher = chokidar.watch([join(dir, '[!.]*.typ'), join(dir, '[!.]*.bib')], {
     ignoreInitial: true,
     awaitWriteFinish: { stabilityThreshold: 200, pollInterval: 50 }
   })

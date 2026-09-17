@@ -3,7 +3,9 @@ import { spawn, ChildProcess, execSync } from 'child_process'
 import { join } from 'path'
 import { writeFileSync, readFileSync, unlinkSync, existsSync } from 'fs'
 import { randomUUID } from 'crypto'
-import { resolveNotesDir } from './notesManager'
+import { resolveNotesDir, listBibFilenames, listBibKeys } from './notesManager'
+
+export type CitationStyle = 'numbered' | 'author-date'
 
 function findTypstBin(): string {
   try {
@@ -55,16 +57,59 @@ const WIKILINK_DEF =
   '[#text(fill: rgb("#1d4ed8"), size: 0.9em)[#it]]\n'
 
 /**
+ * Rewrite the note's citation shorthand into explicit Typst #cite() calls:
+ *   [@key]  (bracketed, possibly multiple "; "-separated) -> parenthetical, e.g. "(Masson et al., 2021)"
+ *   @key    (bare)                                        -> narrative, e.g. "Masson et al. (2021)"
+ * Only identifiers that are actually defined in a .bib file are touched — anything
+ * else (e.g. @fig:results, @tab:summary, @eq:einstein) is left as plain Typst
+ * reference syntax, so figure/table/equation/heading numbering and in-text links
+ * keep working natively (Typst resolves `@label` to "Figure 1" etc. on its own).
+ * Comment lines (// ...) are left untouched since Typst ignores them anyway.
+ */
+function preprocessCitations(body: string, knownKeys: Set<string>): string {
+  if (knownKeys.size === 0) return body
+  return body
+    .split('\n')
+    .map(line => {
+      if (/^\s*\/\//.test(line)) return line
+      return line
+        .replace(/\[(@[\w:-]+(?:\s*;\s*@[\w:-]+)*)\]/g, (m, group: string) => {
+          const parts = group.split(/\s*;\s*/)
+          if (!parts.every(p => knownKeys.has(p.slice(1)))) return m
+          return parts.map(part => `#cite(<${part.slice(1)}>)`).join(' ')
+        })
+        .replace(/@([\w:-]+)/g, (m, key: string) => knownKeys.has(key) ? `#cite(<${key}>, form: "prose")` : m)
+    })
+    .join('\n')
+}
+
+/**
  * Compile a note body directly. The body is expected to contain its own
  * page/text setup and header (generated when the note is created).
  * Wiki links [[...]] are rendered as styled #wikilink[...] boxes.
  */
-export async function compileNote(body: string): Promise<CompileResult> {
+export async function compileNote(body: string, citationStyle: CitationStyle = 'author-date'): Promise<CompileResult> {
   const hasLinks = /\[\[/.test(body)
-  const cleanBody = (hasLinks ? WIKILINK_DEF : '')
-    + body
+  const knownKeys = listBibKeys()
+  let cleanBody = (hasLinks ? WIKILINK_DEF : '')
+    + preprocessCitations(body, knownKeys)
       .replace(/\[\[([^\]]+)\]\]/g, '#wikilink[$1]')
       .replace(/^---$/gm, '#line(length: 100%)')
+      // Drop any hand-written #bibliography(...) call — one is generated below,
+      // governed by the citation style setting, and Typst rejects duplicates.
+      .replace(/^\s*#bibliography\([^)]*\)\s*$/gm, '')
+
+  if (cleanBody.includes('#cite(')) {
+    const bibFiles = listBibFilenames()
+    if (bibFiles.length > 0) {
+      const styleName = citationStyle === 'numbered' ? 'ieee' : 'apa'
+      const pathsArg = bibFiles.length === 1
+        ? `"${bibFiles[0]}"`
+        : `(${bibFiles.map(f => `"${f}"`).join(', ')})`
+      cleanBody += `\n#bibliography(${pathsArg}, style: "${styleName}")\n`
+    }
+  }
+
   return compileTypst(cleanBody)
 }
 

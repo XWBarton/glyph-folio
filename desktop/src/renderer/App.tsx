@@ -13,13 +13,14 @@ import type { AppSettings } from '../../preload/index'
 export default function App() {
   // ── State ────────────────────────────────────────────────────────────────────
   const {
-    notes, activeNote, isLoading, history,
+    notes, activeNote, isLoading, history, bibEntries,
     selectNote, updateBody, createNote, importNote, deleteNote, refreshNotes, flushSave
   } = useNotes()
 
   const [settings, setSettings] = useState<AppSettings>({
     syncMode: 'local', serverUrl: '', notesDir: '', fontSize: 14,
-    spellAffPath: '', spellDicPath: '', spellLangName: '', authToken: ''
+    spellAffPath: '', spellDicPath: '', spellLangName: '', authToken: '',
+    citationStyle: 'author-date'
   })
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [searchOpen, setSearchOpen] = useState(false)
@@ -218,18 +219,27 @@ export default function App() {
     await window.api.notesExportPdf(Array.from(pdfBytes), name)
   }, [pdfBytes, activeNote, flushSave])
 
+  // ── Export Word (.docx) ─────────────────────────────────────────────────────
+  const exportDocx = useCallback(async () => {
+    if (!activeNote) return
+    await flushSave()
+    const name = `${activeNote.id}.docx`
+    await window.api.notesExportDocx(activeNote.filePath, name)
+  }, [activeNote, flushSave])
+
   // ── Menu events ───────────────────────────────────────────────────────────────
   useEffect(() => {
     const unsubs = [
       window.api.onMenuNew(handleCreate),
       window.api.onMenuDelete(() => { if (activeNote) handleDelete(activeNote.filePath) }),
       window.api.onMenuExportPdf(exportPdf),
+      window.api.onMenuExportDocx(exportDocx),
       window.api.onMenuRerender(compile),
       window.api.onMenuShareSource(handleShareSource),
       window.api.onMenuImport(() => { importNote() }),
     ]
     return () => unsubs.forEach(fn => fn())
-  }, [handleCreate, handleDelete, exportPdf, compile, activeNote, importNote])
+  }, [handleCreate, handleDelete, exportPdf, exportDocx, compile, activeNote, importNote])
 
   // ── Cmd+K to open notes explorer, Cmd+1/2/3 for navigation history ──────────
   useEffect(() => {
@@ -300,7 +310,7 @@ export default function App() {
         syncMode={settings.syncMode}
         syncStatus={syncStatus}
         hasActiveNote={!!activeNote}
-        onShare={(kind) => kind === 'pdf' ? exportPdf() : handleShareSource()}
+        onShare={(kind) => kind === 'pdf' ? exportPdf() : kind === 'docx' ? exportDocx() : handleShareSource()}
         onSettings={() => setSettingsOpen(v => !v)}
         onOpenNotes={() => setSearchOpen(true)}
       />
@@ -331,6 +341,7 @@ export default function App() {
                 customDictionary={customDictionary}
                 onAddToDict={handleAddWord}
                 notes={notes}
+                bibEntries={bibEntries}
                 onNavigate={handleNavigate}
                 noteId={activeNote.id}
                 onPickImage={handlePickImage}

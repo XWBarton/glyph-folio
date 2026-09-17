@@ -15,7 +15,7 @@ interface Props {
   hasActiveNote: boolean
   onSettings: () => void
   onOpenNotes: () => void
-  onShare: (kind: 'pdf' | 'source') => void
+  onShare: (kind: 'pdf' | 'docx' | 'source') => void
 }
 
 function formatLastSaved(date: Date): string {
@@ -218,7 +218,7 @@ function NotesBtn({ onClick }: { onClick: () => void }) {
 }
 
 function ShareDropdown({ onShare, hasPdf, hasActiveNote }: {
-  onShare: (kind: 'pdf' | 'source') => void
+  onShare: (kind: 'pdf' | 'docx' | 'source') => void
   hasPdf: boolean
   hasActiveNote: boolean
 }) {
@@ -287,6 +287,12 @@ function ShareDropdown({ onShare, hasPdf, hasActiveNote }: {
             disabled={!hasPdf}
             style={itemStyle}
             onClick={() => { setOpen(false); onShare('pdf') }}
+          />
+          <DropdownItem
+            label="Word (.docx)"
+            disabled={false}
+            style={itemStyle}
+            onClick={() => { setOpen(false); onShare('docx') }}
           />
           <DropdownItem
             label="Source"

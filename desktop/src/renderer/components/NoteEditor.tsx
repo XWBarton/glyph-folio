@@ -8,7 +8,9 @@ import { buildMonacoTheme, type TokenColors } from '../lib/tokenColors'
 import { filterCommands, type SlashCommand } from '../lib/slashCommands'
 import { SlashCommandPalette } from './SlashCommandPalette'
 import { WikiLinkPalette } from './WikiLinkPalette'
+import { CitationPalette } from './CitationPalette'
 import { TagPalette } from './TagPalette'
+import type { BibEntry } from '../lib/bibParser'
 import { FindReplaceModal } from './FindReplaceModal'
 import { SpellSuggestions } from './SpellSuggestions'
 import { EmojiPicker } from './EmojiPicker'
@@ -55,6 +57,18 @@ if (!document.getElementById('glyph-folio-wiki-badge-style')) {
   document.head.appendChild(style)
 }
 
+if (!document.getElementById('glyph-folio-citation-badge-style')) {
+  const style = document.createElement('style')
+  style.id = 'glyph-folio-citation-badge-style'
+  style.textContent = `
+    .citation-badge { background: rgba(22, 163, 74, 0.10); border-radius: 4px; }
+    @media (prefers-color-scheme: dark) {
+      .citation-badge { background: rgba(74, 222, 128, 0.15); }
+    }
+  `
+  document.head.appendChild(style)
+}
+
 interface PaletteState {
   open: boolean; x: number; y: number
   commands: SlashCommand[]; selectedIndex: number
@@ -63,6 +77,11 @@ interface PaletteState {
 interface WikiPaletteState {
   open: boolean; x: number; y: number
   notes: NoteMeta[]; selectedIndex: number
+}
+
+interface CitationPaletteState {
+  open: boolean; x: number; y: number
+  entries: BibEntry[]; selectedIndex: number
 }
 
 interface TagPaletteState {
@@ -80,6 +99,7 @@ interface Props {
   customDictionary: string[]
   onAddToDict: (word: string) => void
   notes: NoteMeta[]
+  bibEntries: BibEntry[]
   onNavigate: (title: string) => void
   noteId: string
   onPickImage: () => Promise<string | null>
@@ -91,7 +111,7 @@ interface Props {
 
 export function NoteEditor({
   value, onChange, tokenColors, fontSize, spellCheckEnabled, onToggleSpellIgnore,
-  customDictionary, onAddToDict, notes, onNavigate, noteId, onPickImage, onDropImage, onPasteImage, focusTitleKey,
+  customDictionary, onAddToDict, notes, bibEntries, onNavigate, noteId, onPickImage, onDropImage, onPasteImage, focusTitleKey,
   onSelectionChange
 }: Props) {
   const [isDark, setIsDark] = useState(() => window.matchMedia('(prefers-color-scheme: dark)').matches)
@@ -137,6 +157,13 @@ export function NoteEditor({
   wikiPaletteRef.current = wikiPalette
   const wikiPosRef       = useRef<{ lineNumber: number; column: number } | null>(null)
 
+  const [citationPalette, setCitationPalette] = useState<CitationPaletteState>({
+    open: false, x: 0, y: 0, entries: [], selectedIndex: 0
+  })
+  const citationPaletteRef   = useRef(citationPalette)
+  citationPaletteRef.current = citationPalette
+  const citationPosRef       = useRef<{ lineNumber: number; column: number } | null>(null)
+
   const [tagPalette, setTagPalette] = useState<TagPaletteState>({ open: false, x: 0, y: 0, tags: [], selectedIndex: 0 })
   const tagPaletteRef   = useRef(tagPalette)
   tagPaletteRef.current = tagPalette
@@ -161,6 +188,8 @@ export function NoteEditor({
   const slashPosRef  = useRef<{ lineNumber: number; column: number } | null>(null)
   const notesRef     = useRef(notes)
   notesRef.current   = notes
+  const bibEntriesRef   = useRef(bibEntries)
+  bibEntriesRef.current = bibEntries
   const onNavigateRef = useRef(onNavigate)
   onNavigateRef.current = onNavigate
   const noteIdRef = useRef(noteId)
@@ -174,6 +203,8 @@ export function NoteEditor({
   const onSelectionChangeRef = useRef(onSelectionChange)
   onSelectionChangeRef.current = onSelectionChange
   const wikiDecoCollRef = useRef<editor.IEditorDecorationsCollection | null>(null)
+  const citationDecoCollRef = useRef<editor.IEditorDecorationsCollection | null>(null)
+  const applyCitationDecorationsRef = useRef<() => void>(() => {})
 
   const [spellToast, setSpellToast] = useState<'enabled' | 'disabled' | null>(null)
   const spellEnabledRef = useRef(spellCheckEnabled)
@@ -417,6 +448,11 @@ export function NoteEditor({
     setWikiPalette(p => ({ ...p, open: false }))
   }, [])
 
+  const closeCitationPalette = useCallback(() => {
+    citationPosRef.current = null
+    setCitationPalette(p => ({ ...p, open: false }))
+  }, [])
+
   const closeTagPalette = useCallback(() => {
     tagPosRef.current = null
     setTagPalette(p => ({ ...p, open: false }))
@@ -536,16 +572,32 @@ export function NoteEditor({
     ed.focus()
   }, [])
 
+  const insertCitation = useCallback((entry: BibEntry) => {
+    const ed = editorRef.current; const pos = citationPosRef.current
+    if (!ed || !pos) return
+    const cur = ed.getPosition(); if (!cur) return
+    citationPosRef.current = null
+    setCitationPalette(p => ({ ...p, open: false }))
+    const insertText = `@${entry.key}`
+    ed.executeEdits('citation-insert', [{ range: new monaco.Range(pos.lineNumber, pos.column, cur.lineNumber, cur.column), text: insertText }])
+    ed.setPosition({ lineNumber: pos.lineNumber, column: pos.column + insertText.length })
+    ed.focus()
+  }, [])
+
   const doInsertRef      = useRef(doInsert)
   const closePalRef      = useRef(closePalette)
   const insertWikiRef    = useRef(insertWikiLink)
   const closeWikiRef     = useRef(closeWikiPalette)
+  const insertCitationRef  = useRef(insertCitation)
+  const closeCitationRef   = useRef(closeCitationPalette)
   const insertTagRef     = useRef(insertTag)
   const closeTagRef      = useRef(closeTagPalette)
   doInsertRef.current    = doInsert
   closePalRef.current    = closePalette
   insertWikiRef.current  = insertWikiLink
   closeWikiRef.current   = closeWikiPalette
+  insertCitationRef.current = insertCitation
+  closeCitationRef.current  = closeCitationPalette
   insertTagRef.current   = insertTag
   closeTagRef.current    = closeTagPalette
 
@@ -566,6 +618,23 @@ export function NoteEditor({
           setWikiPalette(p => ({ ...p, selectedIndex: Math.max(0, p.selectedIndex - 1) }))
         } else if (e.key === 'Escape') {
           e.stopPropagation(); e.preventDefault(); closeWikiRef.current()
+        }
+        return
+      }
+      // Citation palette
+      if (citationPaletteRef.current.open) {
+        if (e.key === 'Enter') {
+          e.stopPropagation(); e.preventDefault()
+          const entry = citationPaletteRef.current.entries[citationPaletteRef.current.selectedIndex]
+          if (entry) insertCitationRef.current(entry)
+        } else if (e.key === 'ArrowDown') {
+          e.stopPropagation(); e.preventDefault()
+          setCitationPalette(p => ({ ...p, selectedIndex: Math.min(p.entries.length - 1, p.selectedIndex + 1) }))
+        } else if (e.key === 'ArrowUp') {
+          e.stopPropagation(); e.preventDefault()
+          setCitationPalette(p => ({ ...p, selectedIndex: Math.max(0, p.selectedIndex - 1) }))
+        } else if (e.key === 'Escape') {
+          e.stopPropagation(); e.preventDefault(); closeCitationRef.current()
         }
         return
       }
@@ -683,9 +752,38 @@ export function NoteEditor({
         wikiDecoCollRef.current.set(decorations)
       }
     }
+    const applyCitationDecorations = () => {
+      const model = ed.getModel()
+      if (!model) return
+      const text = model.getValue()
+      const knownKeys = new Set(bibEntriesRef.current.map(e => e.key))
+      const decorations: editor.IModelDeltaDecoration[] = []
+      const re = /@([\w:-]+)/g
+      let m: RegExpExecArray | null
+      while ((m = re.exec(text)) !== null) {
+        if (!knownKeys.has(m[1])) continue
+        const startPos = model.getPositionAt(m.index)
+        const endPos   = model.getPositionAt(m.index + m[0].length)
+        decorations.push({
+          range: new monaco.Range(startPos.lineNumber, startPos.column, endPos.lineNumber, endPos.column),
+          options: {
+            inlineClassName: 'citation-badge',
+            stickiness: monaco.editor.TrackedRangeStickiness.NeverGrowsWhenTypingAtEdges,
+          }
+        })
+      }
+      if (!citationDecoCollRef.current) {
+        citationDecoCollRef.current = ed.createDecorationsCollection(decorations)
+      } else {
+        citationDecoCollRef.current.set(decorations)
+      }
+    }
+    applyCitationDecorationsRef.current = applyCitationDecorations
+
     applyWikiDecorations()
-    ed.onDidChangeModelContent(() => applyWikiDecorations())
-    ed.onDidChangeModel(() => applyWikiDecorations())
+    applyCitationDecorations()
+    ed.onDidChangeModelContent(() => { applyWikiDecorations(); applyCitationDecorations() })
+    ed.onDidChangeModel(() => { applyWikiDecorations(); applyCitationDecorations() })
 
     ed.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyB, () => wrapWithMarker('*'))
     ed.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyI, () => wrapWithMarker('_'))
@@ -841,6 +939,29 @@ export function NoteEditor({
         if (wikiPaletteRef.current.open) closeWikiRef.current()
       }
 
+      // Citation palette: detect @ trigger (but not inside a // @tags: line, which has its own palette)
+      const citationMatch = !/^\/\/ @tags:/.test(line) ? before.match(/@([\w:-]*)$/) : null
+      if (citationMatch) {
+        if (!citationPosRef.current || citationPosRef.current.lineNumber !== pos.lineNumber) {
+          citationPosRef.current = { lineNumber: pos.lineNumber, column: pos.column - citationMatch[0].length }
+        }
+        const query = citationMatch[1].toLowerCase()
+        const filtered = bibEntriesRef.current.filter(e =>
+          e.key.toLowerCase().includes(query) ||
+          (e.author?.toLowerCase().includes(query) ?? false) ||
+          (e.title?.toLowerCase().includes(query) ?? false)
+        )
+        if (filtered.length === 0) { closeCitationRef.current() } else {
+          const pixelPos = ed.getScrolledVisiblePosition(pos)
+          const rect = ed.getDomNode()?.getBoundingClientRect()
+          if (pixelPos && rect) {
+            setCitationPalette({ open: true, x: rect.left + pixelPos.left, y: rect.top + pixelPos.top + 22, entries: filtered, selectedIndex: 0 })
+          }
+        }
+      } else {
+        if (citationPaletteRef.current.open) closeCitationRef.current()
+      }
+
       // Tag palette: detect // @tags: line
       if (/^\/\/ @tags:/.test(line)) {
         const lastSep = Math.max(before.lastIndexOf(','), before.indexOf(':'))
@@ -890,6 +1011,8 @@ export function NoteEditor({
     ed.onDidChangeCursorPosition((e) => {
       const wiki = wikiPosRef.current
       if (wiki && (e.position.lineNumber !== wiki.lineNumber || e.position.column < wiki.column)) closeWikiRef.current()
+      const citation = citationPosRef.current
+      if (citation && (e.position.lineNumber !== citation.lineNumber || e.position.column < citation.column)) closeCitationRef.current()
       const tag = tagPosRef.current
       if (tag && (e.position.lineNumber !== tag.lineNumber || e.position.column < tag.column)) closeTagRef.current()
       const slash = slashPosRef.current; if (!slash) return
@@ -906,6 +1029,10 @@ export function NoteEditor({
   useEffect(() => {
     editorRef.current?.updateOptions({ fontSize })
   }, [fontSize])
+
+  useEffect(() => {
+    applyCitationDecorationsRef.current()
+  }, [bibEntries])
 
   useEffect(() => {
     if (!focusTitleKey) return
@@ -1030,6 +1157,7 @@ export function NoteEditor({
 
       <SlashCommandPalette {...palette} onSelect={doInsert} onClose={closePalette} />
       <WikiLinkPalette {...wikiPalette} onSelect={insertWikiLink} onClose={closeWikiPalette} />
+      <CitationPalette {...citationPalette} onSelect={insertCitation} onClose={closeCitationPalette} />
       <TagPalette {...tagPalette} onSelect={insertTag} onClose={closeTagPalette} />
 
       {emojiPickerOpen && (

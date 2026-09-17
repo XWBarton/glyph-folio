@@ -100,10 +100,10 @@ app.delete('/api/notes/:id/attachments/:filename', (req, res) => {
 // ── Compile ───────────────────────────────────────────────────────────────────
 
 app.post('/api/compile', async (req, res) => {
-  const { content, noteId } = req.body as { content?: string; noteId?: string }
+  const { content, noteId, citationStyle } = req.body as { content?: string; noteId?: string; citationStyle?: 'numbered' | 'author-date' }
   if (typeof content !== 'string') { res.status(400).json({ error: 'content required' }); return }
 
-  const result = await compileTypst(content, noteId)
+  const result = await compileTypst(content, noteId, citationStyle)
   res.json(result)
 })
 
@@ -113,8 +113,8 @@ app.post('/api/notes/:id/export', async (req, res) => {
   const note = readNote(req.params['id']!)
   if (!note) { res.status(404).json({ error: 'Not found' }); return }
 
-  const { title = note.title, date = new Date(note.modifiedAt).toLocaleDateString() } =
-    req.body as { title?: string; date?: string }
+  const { title = note.title, date = new Date(note.modifiedAt).toLocaleDateString(), citationStyle } =
+    req.body as { title?: string; date?: string; citationStyle?: 'numbered' | 'author-date' }
 
   const safeTitle = title.replace(/\\/g, '\\\\').replace(/\[/g, '\\[').replace(/\]/g, '\\]')
   const content = `#set page(margin: 2cm)
@@ -134,7 +134,7 @@ app.post('/api/notes/:id/export', async (req, res) => {
 ${note.body}
 `
 
-  const result = await compileTypst(content)
+  const result = await compileTypst(content, note.id, citationStyle)
   if (!result.ok) { res.status(500).json({ error: result.error }); return }
 
   const buf = Buffer.from(result.pdfBase64, 'base64')

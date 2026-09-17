@@ -8,9 +8,16 @@ Personal Typst note-taking system. Write notes in Typst markup on your Desktop o
 
 - **Typst editor** — write in Typst markup with syntax highlighting; headings, bold, italic, code, math, and more all coloured as you type
 - **PDF compilation** — compile any note to a PDF via the sync server; preview inline or export
+- **Word export** (desktop) — export any note as a formatted `.docx`, with numbered figure/table captions, live clickable cross-references, and a generated citations/bibliography section
+- **Citations & bibliography** — drop a `.bib` file in your notes folder and cite from it with `@key` (narrative — "Masson et al. (2021) said…") or `[@key]` (parenthetical — "(Masson et al., 2021)"); pick Numbered or Author-Date style in Settings and the reference list is generated automatically
+- **Figures, tables & cross-references** — `/image` and `/table` insert numbered, captioned figures and tables; reference them anywhere with `@fig:label` / `@tab:label` for auto-numbered, clickable in-PDF links
+- **Reminders** — `/remind` (or a `// @reminder:` line) schedules a native OS notification for a note
 - **Tag system** — add `// @tags: tag1, tag2` to any note; browse and filter by tag in the Explore tab
 - **Slash commands** — type `/` anywhere to open a command palette with headings, lists, code blocks, math, checkboxes, wiki links, and more
-- **Wiki links** — link notes with `[[Note Title]]`; the graph view visualises connections
+- **Wiki links** — link notes with `[[Note Title]]`, shown as styled badges in both the editor and the exported PDF; the graph view visualises connections
+- **Image paste** — paste an image straight from the clipboard into a note; it's saved to attachments (and uploaded automatically in server sync mode) and inserted as a figure
+- **Word count** — a pill in the editor shows word or character count (click to toggle), and the selection count while text is selected
+- **Table of contents** (iOS) — jump to any heading from a floating table-of-contents button
 - **Three-way sync** — desktop and iOS stay in sync through your own server with 3-way merge conflict resolution
 - **Local mode** — work entirely offline; notes are stored on device with no server required
 - **Separate stores** — local and server notes are kept in separate directories so switching modes never mixes them

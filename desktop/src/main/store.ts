@@ -11,6 +11,7 @@ export interface AppSettings {
   spellDicPath: string
   spellLangName: string
   authToken: string
+  citationStyle: 'numbered' | 'author-date'
 }
 
 const DEFAULTS: AppSettings = {
@@ -22,6 +23,7 @@ const DEFAULTS: AppSettings = {
   spellDicPath: '',
   spellLangName: '',
   authToken: '',
+  citationStyle: 'author-date',
 }
 
 // Simple JSON-based store (no external dependency required)

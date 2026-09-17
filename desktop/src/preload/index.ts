@@ -35,6 +35,7 @@ export interface AppSettings {
   spellDicPath: string
   spellLangName: string
   authToken: string
+  citationStyle: 'numbered' | 'author-date'
 }
 
 export interface FolioAPI {
@@ -45,9 +46,11 @@ export interface FolioAPI {
   notesDelete(filePath: string): Promise<{ success: boolean; error?: string }>
   notesCreate(title?: string): Promise<Note>
   notesExportPdf(pdfBytes: number[], suggestedName: string): Promise<{ success: boolean; error?: string }>
+  notesExportDocx(filePath: string, suggestedName: string): Promise<{ success: boolean; error?: string }>
   notesDir(): Promise<string>
   notesSearch(query: string): Promise<SearchResult[]>
   notesRenameLinks(oldTitle: string, newTitle: string, excludeFilePath: string): Promise<string[]>
+  bibList(): Promise<string[]>
   typstCompileNote(body: string): Promise<{ pdfBytes: number[] } | { error: string }>
   attachmentsList(noteId: string): Promise<string[]>
   attachmentsPickAndSave(noteId: string): Promise<{ filename: string } | null>
@@ -64,6 +67,7 @@ export interface FolioAPI {
   onMenuNew(cb: () => void): () => void
   onMenuDelete(cb: () => void): () => void
   onMenuExportPdf(cb: () => void): () => void
+  onMenuExportDocx(cb: () => void): () => void
   onMenuShareSource(cb: () => void): () => void
   onMenuImport(cb: () => void): () => void
   onMenuRerender(cb: () => void): () => void
@@ -88,9 +92,11 @@ const api: FolioAPI = {
   notesDelete: (filePath) => ipcRenderer.invoke('notes:delete', filePath),
   notesCreate: (title) => ipcRenderer.invoke('notes:create', title),
   notesExportPdf: (pdfBytes, name) => ipcRenderer.invoke('notes:export-pdf', pdfBytes, name),
+  notesExportDocx: (filePath, name) => ipcRenderer.invoke('notes:export-docx', filePath, name),
   notesDir: () => ipcRenderer.invoke('notes:dir'),
   notesSearch: (query) => ipcRenderer.invoke('notes:search', query),
   notesRenameLinks: (oldTitle, newTitle, excludeFilePath) => ipcRenderer.invoke('notes:rename-links', oldTitle, newTitle, excludeFilePath),
+  bibList: () => ipcRenderer.invoke('bib:list'),
   typstCompileNote: (body) => ipcRenderer.invoke('typst:compile-note', body),
   attachmentsList: (noteId) => ipcRenderer.invoke('attachments:list', noteId),
   attachmentsPickAndSave: (noteId) => ipcRenderer.invoke('attachments:pick-and-save', noteId),
@@ -123,6 +129,11 @@ const api: FolioAPI = {
     const handler = () => cb()
     ipcRenderer.on('menu:export-pdf', handler)
     return () => ipcRenderer.off('menu:export-pdf', handler)
+  },
+  onMenuExportDocx: (cb) => {
+    const handler = () => cb()
+    ipcRenderer.on('menu:export-docx', handler)
+    return () => ipcRenderer.off('menu:export-docx', handler)
   },
   onMenuRerender: (cb) => {
     const handler = () => cb()

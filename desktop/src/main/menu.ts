@@ -35,6 +35,10 @@ export function buildMenu(win: BrowserWindow | null): void {
           click: () => win?.webContents.send('menu:export-pdf')
         },
         {
+          label: 'Export Word (.docx)',
+          click: () => win?.webContents.send('menu:export-docx')
+        },
+        {
           label: 'Share Source…',
           accelerator: 'CmdOrCtrl+Shift+S',
           click: () => win?.webContents.send('menu:share-source')

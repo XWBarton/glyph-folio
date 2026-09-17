@@ -20,6 +20,7 @@ export function SettingsPanel({
   customDictionary, onRemoveWord
 }: Props) {
   const [syncMode, setSyncMode] = useState(settings.syncMode)
+  const [citationStyle, setCitationStyle] = useState(settings.citationStyle ?? 'author-date')
   const [serverUrl, setServerUrl] = useState(settings.serverUrl)
   const [authToken, setAuthToken] = useState(settings.authToken ?? '')
   const [notesDir, setNotesDir] = useState(settings.notesDir)
@@ -34,6 +35,7 @@ export function SettingsPanel({
 
   useEffect(() => {
     setSyncMode(settings.syncMode)
+    setCitationStyle(settings.citationStyle ?? 'author-date')
     setServerUrl(settings.serverUrl)
     setAuthToken(settings.authToken ?? '')
     setNotesDir(settings.notesDir)
@@ -76,7 +78,7 @@ export function SettingsPanel({
   }
 
   const handleSave = () => {
-    onSave({ syncMode, serverUrl, authToken, notesDir, fontSize })
+    onSave({ syncMode, serverUrl, authToken, notesDir, fontSize, citationStyle })
     onClose()
   }
 
@@ -144,7 +146,7 @@ export function SettingsPanel({
           flexShrink: 0,
         }}>
           <span style={{
-            fontSize: 12, fontWeight: 600, color: 'var(--text)',
+            fontSize: 12, fontWeight: 600,
             letterSpacing: '0.06em', textTransform: 'uppercase',
             color: 'var(--overlay)',
           }}>
@@ -223,6 +225,42 @@ export function SettingsPanel({
                 placeholder="~/Documents/GlyphFolio"
               />
             )}
+          </Card>
+
+          {/* ── Citations ── */}
+          <Card label="Citations">
+            <div style={{ display: 'flex', gap: 4 }}>
+              {([
+                ['author-date', 'Author-Date'],
+                ['numbered', 'Numbered'],
+              ] as const).map(([mode, label]) => (
+                <button
+                  key={mode}
+                  onClick={() => setCitationStyle(mode)}
+                  style={{
+                    flex: 1,
+                    background: citationStyle === mode ? 'rgba(37,99,235,0.12)' : 'rgba(255,255,255,0.5)',
+                    border: `1px solid ${citationStyle === mode ? 'rgba(37,99,235,0.25)' : 'rgba(255,255,255,0.7)'}`,
+                    borderRadius: 8,
+                    padding: '5px 0',
+                    fontSize: 11,
+                    fontWeight: citationStyle === mode ? 600 : 400,
+                    color: citationStyle === mode ? 'var(--accent)' : 'var(--subtext)',
+                    cursor: 'pointer',
+                    letterSpacing: '-0.01em',
+                    transition: 'all 0.1s',
+                    fontFamily: 'inherit',
+                  }}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            <div style={{ fontSize: 10, color: 'var(--overlay)', marginTop: 8, lineHeight: 1.5 }}>
+              Controls how <code style={{ fontFamily: 'monospace' }}>@key</code> and{' '}
+              <code style={{ fontFamily: 'monospace' }}>[@key]</code> citations and the reference list
+              are rendered in exported PDFs.
+            </div>
           </Card>
 
           {/* ── Spelling ── */}
