@@ -94,7 +94,28 @@ function scatter(nodes: GNode[], cx: number, cy: number) {
   })
 }
 
-function tick(nodes: GNode[], edges: GEdge[], cx: number, cy: number) {
+function computeDegrees(edges: GEdge[]): Map<string, number> {
+  const deg = new Map<string, number>()
+  for (const e of edges) {
+    deg.set(e.source, (deg.get(e.source) ?? 0) + 1)
+    deg.set(e.target, (deg.get(e.target) ?? 0) + 1)
+  }
+  return deg
+}
+
+/// On-screen radius for a node — grows with connection count so hubs read as
+/// hubs, the same convention Obsidian's graph uses instead of fixed-size dots.
+function nodeRadius(isTag: boolean, degree: number, isActive: boolean, isHovered: boolean): number {
+  const base = isTag ? 3 : 4
+  const growth = Math.sqrt(degree) * (isTag ? 1.5 : 2)
+  const r = Math.min(isTag ? 12 : 15, base + growth)
+  return r + (isActive ? 2.5 : isHovered ? 1.5 : 0)
+}
+
+// `alpha` cools from 1 toward 0 over the simulation's life (same idea as
+// d3-force) so the layout eases into place instead of jittering at full
+// strength until it's abruptly cut off.
+function tick(nodes: GNode[], edges: GEdge[], cx: number, cy: number, alpha: number) {
   const REPULSION = 2400
   const SPRING_LEN = 100
   const SPRING_K = 0.04
@@ -107,7 +128,7 @@ function tick(nodes: GNode[], edges: GEdge[], cx: number, cy: number) {
       const dy = nodes[j].y - nodes[i].y || 0.01
       const d2 = dx * dx + dy * dy
       const d = Math.sqrt(d2)
-      const f = REPULSION / d2
+      const f = (REPULSION / d2) * alpha
       nodes[i].vx -= (dx / d) * f
       nodes[i].vy -= (dy / d) * f
       nodes[j].vx += (dx / d) * f
@@ -130,8 +151,8 @@ function tick(nodes: GNode[], edges: GEdge[], cx: number, cy: number) {
   }
 
   for (const n of nodes) {
-    n.vx += (cx - n.x) * CENTER_K
-    n.vy += (cy - n.y) * CENTER_K
+    n.vx += (cx - n.x) * CENTER_K * alpha
+    n.vy += (cy - n.y) * CENTER_K * alpha
     n.vx *= DAMP; n.vy *= DAMP
     n.x += n.vx; n.y += n.vy
   }
@@ -148,7 +169,8 @@ function draw(
   activeNoteId: string | null,
   dpr: number,
   vp: Viewport,
-  tagColors: Record<string, string>
+  tagColors: Record<string, string>,
+  degrees: Map<string, number>
 ) {
   const { width, height } = ctx.canvas
   ctx.clearRect(0, 0, width, height)
@@ -168,62 +190,74 @@ function draw(
   }
   const dimming = hoveredId !== null && highlighted.size > 0
 
-  // Draw edges
+  // Edges stay a quiet neutral line by default — like Obsidian's graph — and
+  // only pick up the accent color where a hover highlights an actual path,
+  // instead of every edge competing for attention all the time.
   for (const e of edges) {
     const si = idxMap.get(e.source); const ti = idxMap.get(e.target)
     if (si == null || ti == null) continue
     const s = nodes[si]; const t = nodes[ti]
-    const active = !dimming || (highlighted.has(e.source) && highlighted.has(e.target))
+    const isPath = dimming && highlighted.has(e.source) && highlighted.has(e.target)
     ctx.beginPath()
     ctx.moveTo(s.x, s.y)
     ctx.lineTo(t.x, t.y)
-    ctx.strokeStyle = active ? 'rgba(37,99,235,0.25)' : 'rgba(0,0,0,0.05)'
-    ctx.lineWidth = active ? 1.5 / dpr : 1 / dpr
+    ctx.strokeStyle = isPath ? 'rgba(37,99,235,0.55)' : dimming ? 'rgba(107,114,128,0.05)' : 'rgba(107,114,128,0.16)'
+    ctx.lineWidth = (isPath ? 1.8 : 1) / dpr
     ctx.stroke()
   }
 
-  // Draw nodes
+  // Nodes are solid and flat (no hollow rings) sized by connection count —
+  // notes are circles, tags are diamonds — with a soft glow standing in for a
+  // border on hover/active.
   for (const n of nodes) {
     const isActive = n.id === activeNoteId
     const isHovered = n.id === hoveredId
     const isDimmed = dimming && !highlighted.has(n.id)
     const isTag = n.type === 'tag'
-    const r = isTag ? 6 : isActive ? 10 : 8
+    const degree = degrees.get(n.id) ?? 0
+    const r = nodeRadius(isTag, degree, isActive, isHovered)
 
     const color = resolveColor(n, tagColors)
-
     const { r: cr, g: cg, b: cb } = hexToRgb(color)
-    const alpha = isDimmed ? 0.2 : 1
+    const alpha = isDimmed ? 0.18 : 1
 
-    // Shadow for hovered/active
     if (isHovered || isActive) {
       ctx.shadowColor = color
-      ctx.shadowBlur = 12 / dpr
+      ctx.shadowBlur = 14 / dpr
     }
 
     ctx.beginPath()
     if (isTag) {
-      // Diamond for tag nodes
-      ctx.moveTo(n.x, n.y - r)
-      ctx.lineTo(n.x + r, n.y)
-      ctx.lineTo(n.x, n.y + r)
-      ctx.lineTo(n.x - r, n.y)
+      // Diamond, scaled up slightly over the circle radius so it reads as the
+      // same visual weight (a diamond inscribed at radius r has less area
+      // than a circle at that radius) — keeps tags visually distinct from notes.
+      const dr = r * 1.25
+      ctx.moveTo(n.x, n.y - dr)
+      ctx.lineTo(n.x + dr, n.y)
+      ctx.lineTo(n.x, n.y + dr)
+      ctx.lineTo(n.x - dr, n.y)
       ctx.closePath()
     } else {
       ctx.arc(n.x, n.y, r, 0, Math.PI * 2)
     }
-
-    ctx.fillStyle = `rgba(${cr},${cg},${cb},${alpha * 0.15})`
+    ctx.fillStyle = `rgba(${cr},${cg},${cb},${alpha * (isTag ? 0.7 : 0.92)})`
     ctx.fill()
-    ctx.strokeStyle = `rgba(${cr},${cg},${cb},${alpha})`
-    ctx.lineWidth = (isActive ? 2.5 : 1.5) / dpr
-    ctx.stroke()
+
+    if (isActive || isHovered) {
+      ctx.strokeStyle = `rgba(255,255,255,${alpha * 0.9})`
+      ctx.lineWidth = 2 / dpr
+      ctx.stroke()
+    }
 
     ctx.shadowBlur = 0
     ctx.shadowColor = 'transparent'
 
-    // Label
-    if (!isDimmed || isHovered) {
+    // Labels show for hovered/active nodes always, otherwise only once a node
+    // is either a real hub or the view is zoomed in enough to read it —
+    // mirrors Obsidian's zoom-dependent labels instead of printing every
+    // label at once and turning dense graphs into text soup.
+    const labelWorthy = isActive || isHovered || (!isDimmed && (vp.scale > 1.35 || r > 9))
+    if (labelWorthy) {
       const fontSize = isTag ? 10 : 11
       ctx.font = `${isActive ? 600 : 400} ${fontSize / dpr}px system-ui, -apple-system, sans-serif`
       ctx.fillStyle = isDimmed ? 'rgba(0,0,0,0.2)' : isActive ? '#1a1d2e' : '#4b5563'
@@ -240,6 +274,8 @@ export function GraphView({ notes, lens, activeNoteId, onSelect }: Props) {
   const canvasRef   = useRef<HTMLCanvasElement>(null)
   const nodesRef    = useRef<GNode[]>([])
   const edgesRef    = useRef<GEdge[]>([])
+  const degreesRef  = useRef<Map<string, number>>(new Map())
+  const alphaRef    = useRef(1)
   const rafRef      = useRef<number | null>(null)
   const hovered     = useRef<string | null>(null)
   const draggingRef = useRef<{ id: string; ox: number; oy: number } | null>(null)
@@ -263,14 +299,15 @@ export function GraphView({ notes, lens, activeNoteId, onSelect }: Props) {
   const redraw = useCallback(() => {
     const canvas = getCanvas(); if (!canvas) return
     const ctx = canvas.getContext('2d'); if (!ctx) return
-    draw(ctx, nodesRef.current, edgesRef.current, lensRef.current, hovered.current, activeRef.current, getDpr(), viewportRef.current, tagColorsRef.current)
+    draw(ctx, nodesRef.current, edgesRef.current, lensRef.current, hovered.current, activeRef.current, getDpr(), viewportRef.current, tagColorsRef.current, degreesRef.current)
   }, [])
 
   const loop = useCallback(() => {
     stepsRef.current++
     const canvas = getCanvas(); if (!canvas) return
     const cx = canvas.clientWidth / 2, cy = canvas.clientHeight / 2
-    tick(nodesRef.current, edgesRef.current, cx, cy)
+    alphaRef.current = Math.max(0, alphaRef.current * 0.988)
+    tick(nodesRef.current, edgesRef.current, cx, cy, Math.max(alphaRef.current, 0.05))
     // Pin dragged node so simulation doesn't push it away
     const drag = draggingRef.current
     if (drag) {
@@ -278,7 +315,7 @@ export function GraphView({ notes, lens, activeNoteId, onSelect }: Props) {
       if (node) { node.vx = 0; node.vy = 0 }
     }
     redraw()
-    if (stepsRef.current < 300) {
+    if (stepsRef.current < 300 && alphaRef.current > 0.01) {
       rafRef.current = requestAnimationFrame(loop)
     } else {
       rafRef.current = null
@@ -288,6 +325,7 @@ export function GraphView({ notes, lens, activeNoteId, onSelect }: Props) {
   const startSimulation = useCallback(() => {
     if (rafRef.current) cancelAnimationFrame(rafRef.current)
     stepsRef.current = 0
+    alphaRef.current = 1
     rafRef.current = requestAnimationFrame(loop)
   }, [loop])
 
@@ -310,6 +348,7 @@ export function GraphView({ notes, lens, activeNoteId, onSelect }: Props) {
     }
     nodesRef.current = nodes
     edgesRef.current = edges
+    degreesRef.current = computeDegrees(edges)
     startSimulation()
   }, [notes, lens, startSimulation])
 

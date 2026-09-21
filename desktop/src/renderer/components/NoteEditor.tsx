@@ -190,6 +190,10 @@ export function NoteEditor({
   notesRef.current   = notes
   const bibEntriesRef   = useRef(bibEntries)
   bibEntriesRef.current = bibEntries
+  const knownCitationKeysRef = useRef<Set<string>>(new Set())
+  useEffect(() => {
+    knownCitationKeysRef.current = new Set(bibEntries.map(e => e.key))
+  }, [bibEntries])
   const onNavigateRef = useRef(onNavigate)
   onNavigateRef.current = onNavigate
   const noteIdRef = useRef(noteId)
@@ -756,7 +760,7 @@ export function NoteEditor({
       const model = ed.getModel()
       if (!model) return
       const text = model.getValue()
-      const knownKeys = new Set(bibEntriesRef.current.map(e => e.key))
+      const knownKeys = knownCitationKeysRef.current
       const decorations: editor.IModelDeltaDecoration[] = []
       const re = /@([\w:-]+)/g
       let m: RegExpExecArray | null
@@ -782,7 +786,12 @@ export function NoteEditor({
 
     applyWikiDecorations()
     applyCitationDecorations()
-    ed.onDidChangeModelContent(() => { applyWikiDecorations(); applyCitationDecorations() })
+    let decorationTimer: ReturnType<typeof setTimeout> | null = null
+    const applyDecorationsDebounced = () => {
+      if (decorationTimer) clearTimeout(decorationTimer)
+      decorationTimer = setTimeout(() => { applyWikiDecorations(); applyCitationDecorations() }, 150)
+    }
+    ed.onDidChangeModelContent(applyDecorationsDebounced)
     ed.onDidChangeModel(() => { applyWikiDecorations(); applyCitationDecorations() })
 
     ed.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyB, () => wrapWithMarker('*'))

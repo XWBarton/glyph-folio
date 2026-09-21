@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState, useCallback } from 'react'
+import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react'
 import { Toolbar } from './components/Toolbar'
 import { NoteEditor } from './components/NoteEditor'
 import { PreviewPane } from './components/PreviewPane'
@@ -85,6 +85,11 @@ export default function App() {
   const title = activeNote?.title ?? ''
 
   const { pdfBytes, error, isCompiling, compile } = useNoteCompiler(body)
+
+  const displayCount = useMemo(() => {
+    const base = selectedText !== '' ? selectedText : body
+    return countMode === 'words' ? wordCount(base) : charCount(base)
+  }, [selectedText, body, countMode])
 
   // ── Server sync ───────────────────────────────────────────────────────────────
   const { status: syncStatus, pushNote, syncAll, deleteNote: deleteNoteOnServer, uploadAttachment } = useServerSync(
@@ -212,12 +217,16 @@ export default function App() {
   }, [activeNote, flushSave])
 
   // ── Export PDF ────────────────────────────────────────────────────────────────
+  // Recompiles against full-resolution images rather than reusing the (possibly
+  // downscaled-for-preview) `pdfBytes` already on screen.
   const exportPdf = useCallback(async () => {
-    if (!pdfBytes || !activeNote) return
+    if (!activeNote) return
     await flushSave()
+    const result = await window.api.typstCompileNoteForExport(activeNote.body)
+    if (!('pdfBytes' in result)) return
     const name = `${activeNote.id}.pdf`
-    await window.api.notesExportPdf(Array.from(pdfBytes), name)
-  }, [pdfBytes, activeNote, flushSave])
+    await window.api.notesExportPdf(Array.from(result.pdfBytes), name)
+  }, [activeNote, flushSave])
 
   // ── Export Word (.docx) ─────────────────────────────────────────────────────
   const exportDocx = useCallback(async () => {
@@ -274,7 +283,12 @@ export default function App() {
     setSettings(updated)
     await window.api.settingsSet(updated)
     await refreshNotes()
-  }, [settings, refreshNotes])
+    // citationStyle is read on the main process side at compile time, not
+    // passed as part of `body` — recompile only once the new value is
+    // confirmed persisted, so the live preview picks it up immediately
+    // instead of waiting for the next edit.
+    if ('citationStyle' in partial) compile()
+  }, [settings, refreshNotes, compile])
 
   // ── Split pane ────────────────────────────────────────────────────────────────
   const [splitPct, setSplitPct] = useState(50)
@@ -372,11 +386,9 @@ export default function App() {
                 }}
               >
                 {(() => {
-                  const base  = selectedText !== '' ? selectedText : activeNote.body
-                  const count = countMode === 'words' ? wordCount(base) : charCount(base)
-                  const unit  = countMode === 'words' ? 'words' : 'chars'
-                  const pfx   = selectedText !== '' ? 'selected ' : ''
-                  return `${count.toLocaleString()} ${pfx}${unit}`
+                  const unit = countMode === 'words' ? 'words' : 'chars'
+                  const pfx  = selectedText !== '' ? 'selected ' : ''
+                  return `${displayCount.toLocaleString()} ${pfx}${unit}`
                 })()}
               </div>
             )}
@@ -417,7 +429,7 @@ export default function App() {
             boxShadow: 'var(--glass-shadow), inset 0 1px 0 rgba(255,255,255,0.95)',
           }}>
             <ExpandBtn title={splitPct <= 0 ? 'Restore split' : 'Fullscreen preview'} onClick={() => setSplitPct(v => v <= 0 ? 50 : 0)} />
-            <PreviewPane pdfBytes={pdfBytes} error={error} isCompiling={isCompiling} />
+            <PreviewPane pdfBytes={pdfBytes} error={error} isCompiling={isCompiling} noteId={activeNote?.id} />
           </div>
         )}
       </div>

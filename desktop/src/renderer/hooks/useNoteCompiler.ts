@@ -32,7 +32,7 @@ export function useNoteCompiler(body: string) {
 
     isRunning.current = false
     if ('pdfBytes' in result) {
-      setState({ pdfBytes: new Uint8Array(result.pdfBytes), error: null, isCompiling: false })
+      setState({ pdfBytes: result.pdfBytes, error: null, isCompiling: false })
     } else {
       setState(s => ({ ...s, error: result.error, isCompiling: false }))
     }

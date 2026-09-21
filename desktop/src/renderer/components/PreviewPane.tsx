@@ -5,6 +5,7 @@ interface Props {
   pdfBytes: Uint8Array | null
   error: string | null
   isCompiling: boolean
+  noteId?: string
 }
 
 const ZOOM_LEVELS = [0.5, 0.75, 1, 1.25, 1.5, 2, 3]
@@ -13,7 +14,7 @@ function zoomLabel(z: number): string {
   return z === 1 ? 'Fit' : `${Math.round(z * 100)}%`
 }
 
-export function PreviewPane({ pdfBytes, error, isCompiling }: Props) {
+export function PreviewPane({ pdfBytes, error, isCompiling, noteId }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
   const [zoomIdx, setZoomIdx] = useState(2) // default: index 2 = 1.0 (Fit)
   const [fitKey, setFitKey] = useState(0)
@@ -24,7 +25,7 @@ export function PreviewPane({ pdfBytes, error, isCompiling }: Props) {
     setFitKey(k => k + 1)
   }, [])
 
-  usePdfRenderer(containerRef, pdfBytes, zoom, fitKey)
+  usePdfRenderer(containerRef, pdfBytes, zoom, fitKey, noteId)
 
   return (
     <div style={{

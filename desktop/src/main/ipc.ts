@@ -116,11 +116,12 @@ export function registerIpcHandlers(): void {
 
   ipcMain.handle('typst:compile-note', async (_event, body: string) => {
     const citationStyle = getStore().get('citationStyle')
-    const result = await compileNote(body, citationStyle)
-    if ('pdfBytes' in result) {
-      return { pdfBytes: Array.from(result.pdfBytes) }
-    }
-    return result
+    return compileNote(body, citationStyle, 'preview')
+  })
+
+  ipcMain.handle('typst:compile-note-for-export', async (_event, body: string) => {
+    const citationStyle = getStore().get('citationStyle')
+    return compileNote(body, citationStyle, 'export')
   })
 
   ipcMain.handle('settings:get', async () => {

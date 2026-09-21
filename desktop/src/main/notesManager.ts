@@ -1,4 +1,4 @@
-import { app, dialog } from 'electron'
+import { app, dialog, nativeImage } from 'electron'
 import {
   readdirSync, readFileSync, writeFileSync, unlinkSync,
   existsSync, mkdirSync, statSync, rmSync, copyFileSync, utimesSync
@@ -262,14 +262,78 @@ export function readAttachmentBuffer(noteId: string, filename: string): Buffer |
   try { return readFileSync(p) } catch { return null }
 }
 
+export const PREVIEW_CACHE_DIR = '.preview-cache'
+const PREVIEW_MAX_DIMENSION = 1400
+
+/**
+ * Write the preview-cache entry for one attachment: a downscaled re-encode
+ * if it's above PREVIEW_MAX_DIMENSION, otherwise a plain copy — either way
+ * a cache file always ends up on disk so later existence checks are a
+ * cheap `existsSync` instead of re-decoding the image every time.
+ */
+function writePreviewCache(noteId: string, filename: string): void {
+  const srcPath = join(resolveAttachmentsDir(noteId), filename)
+  const cacheDir = join(resolveAttachmentsDir(noteId), PREVIEW_CACHE_DIR)
+  mkdirSync(cacheDir, { recursive: true })
+  const cachePath = join(cacheDir, filename)
+  const img = nativeImage.createFromPath(srcPath)
+  const { width, height } = img.getSize()
+  if (width === 0 || height === 0 || Math.max(width, height) <= PREVIEW_MAX_DIMENSION) {
+    copyFileSync(srcPath, cachePath)
+    return
+  }
+  const resized = width >= height
+    ? img.resize({ width: PREVIEW_MAX_DIMENSION })
+    : img.resize({ height: PREVIEW_MAX_DIMENSION })
+  const ext = extname(filename).toLowerCase()
+  const bytes = ext === '.png' ? resized.toPNG() : resized.toJPEG(82)
+  writeFileSync(cachePath, bytes)
+}
+
+/**
+ * Generate (or regenerate) the downscaled preview copy of a raster
+ * attachment right after it's written, leaving the original (used for
+ * export) untouched. Best-effort: any failure just means the preview falls
+ * back to the full-resolution original, so this never throws.
+ */
+function generatePreviewCache(noteId: string, filename: string): void {
+  const ext = extname(filename).toLowerCase()
+  if (ext !== '.png' && ext !== '.jpg' && ext !== '.jpeg') return
+  try { writePreviewCache(noteId, filename) } catch {
+    // Best-effort optimization — fall back to the original on any failure.
+  }
+}
+
+/**
+ * Lazily backfill the preview-cache entry for attachments that predate
+ * preview caching (or whose entry was otherwise lost). Returns whether a
+ * usable cache entry exists afterward. Cheap steady-state cost: once
+ * cached, this is just an `existsSync` check.
+ */
+export function ensurePreviewCache(noteId: string, filename: string): boolean {
+  const ext = extname(filename).toLowerCase()
+  if (ext !== '.png' && ext !== '.jpg' && ext !== '.jpeg') return false
+  const cachePath = join(resolveNotesDir(), 'attachments', noteId, PREVIEW_CACHE_DIR, filename)
+  if (existsSync(cachePath)) return true
+  try { writePreviewCache(noteId, filename) } catch { return false }
+  return existsSync(cachePath)
+}
+
+function deletePreviewCache(noteId: string, filename: string): void {
+  const p = join(resolveNotesDir(), 'attachments', noteId, PREVIEW_CACHE_DIR, filename)
+  if (existsSync(p)) try { unlinkSync(p) } catch {}
+}
+
 export function writeAttachmentBuffer(noteId: string, filename: string, buffer: Buffer): void {
   const dir = resolveAttachmentsDir(noteId)
   writeFileSync(join(dir, filename), buffer)
+  generatePreviewCache(noteId, filename)
 }
 
 export function deleteAttachmentFile(noteId: string, filename: string): void {
   const p = join(resolveNotesDir(), 'attachments', noteId, filename)
   if (existsSync(p)) unlinkSync(p)
+  deletePreviewCache(noteId, filename)
 }
 
 export function deleteNoteAttachments(noteId: string): void {
@@ -291,6 +355,7 @@ export async function pickAndSaveAttachment(
   const filename = basename(src)
   const dir = resolveAttachmentsDir(noteId)
   copyFileSync(src, join(dir, filename))
+  generatePreviewCache(noteId, filename)
   return { filename }
 }
 
@@ -302,6 +367,7 @@ export function saveFileAsAttachment(
   const filename = basename(srcPath)
   const dir = resolveAttachmentsDir(noteId)
   copyFileSync(srcPath, join(dir, filename))
+  generatePreviewCache(noteId, filename)
   return { filename }
 }
 

@@ -3,7 +3,7 @@ import { spawn, ChildProcess, execSync } from 'child_process'
 import { join } from 'path'
 import { writeFileSync, readFileSync, unlinkSync, existsSync } from 'fs'
 import { randomUUID } from 'crypto'
-import { resolveNotesDir, listBibFilenames, listBibKeys } from './notesManager'
+import { resolveNotesDir, listBibFilenames, listBibKeys, ensurePreviewCache, PREVIEW_CACHE_DIR } from './notesManager'
 
 export type CitationStyle = 'numbered' | 'author-date'
 
@@ -84,11 +84,32 @@ function preprocessCitations(body: string, knownKeys: Set<string>): string {
 }
 
 /**
+ * In preview mode, redirect image() references to a downscaled
+ * .preview-cache copy, so the live preview compiles and rasterizes faster.
+ * The cache entry is created lazily on first use (e.g. attachments pasted
+ * before preview caching existed), then reused on every later compile.
+ * Originals (used for export) are never touched.
+ */
+function rewriteImagesForPreview(body: string): string {
+  return body.replace(/image\("attachments\/([^/"]+)\/([^"]+)"/g, (match, noteId: string, filename: string) => {
+    if (!ensurePreviewCache(noteId, filename)) return match
+    return `image("attachments/${noteId}/${PREVIEW_CACHE_DIR}/${filename}"`
+  })
+}
+
+/**
  * Compile a note body directly. The body is expected to contain its own
  * page/text setup and header (generated when the note is created).
  * Wiki links [[...]] are rendered as styled #wikilink[...] boxes.
+ *
+ * mode 'preview' substitutes downscaled cached images for a faster live
+ * preview; mode 'export' always compiles against full-resolution originals.
  */
-export async function compileNote(body: string, citationStyle: CitationStyle = 'author-date'): Promise<CompileResult> {
+export async function compileNote(
+  body: string,
+  citationStyle: CitationStyle = 'author-date',
+  mode: 'preview' | 'export' = 'export'
+): Promise<CompileResult> {
   const hasLinks = /\[\[/.test(body)
   const knownKeys = listBibKeys()
   let cleanBody = (hasLinks ? WIKILINK_DEF : '')
@@ -109,6 +130,8 @@ export async function compileNote(body: string, citationStyle: CitationStyle = '
       cleanBody += `\n#bibliography(${pathsArg}, style: "${styleName}")\n`
     }
   }
+
+  if (mode === 'preview') cleanBody = rewriteImagesForPreview(cleanBody)
 
   return compileTypst(cleanBody)
 }

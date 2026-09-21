@@ -51,7 +51,8 @@ export interface FolioAPI {
   notesSearch(query: string): Promise<SearchResult[]>
   notesRenameLinks(oldTitle: string, newTitle: string, excludeFilePath: string): Promise<string[]>
   bibList(): Promise<string[]>
-  typstCompileNote(body: string): Promise<{ pdfBytes: number[] } | { error: string }>
+  typstCompileNote(body: string): Promise<{ pdfBytes: Uint8Array } | { error: string }>
+  typstCompileNoteForExport(body: string): Promise<{ pdfBytes: Uint8Array } | { error: string }>
   attachmentsList(noteId: string): Promise<string[]>
   attachmentsPickAndSave(noteId: string): Promise<{ filename: string } | null>
   attachmentsSaveFile(noteId: string, srcPath: string): Promise<{ filename: string } | { error: string }>
@@ -98,6 +99,7 @@ const api: FolioAPI = {
   notesRenameLinks: (oldTitle, newTitle, excludeFilePath) => ipcRenderer.invoke('notes:rename-links', oldTitle, newTitle, excludeFilePath),
   bibList: () => ipcRenderer.invoke('bib:list'),
   typstCompileNote: (body) => ipcRenderer.invoke('typst:compile-note', body),
+  typstCompileNoteForExport: (body) => ipcRenderer.invoke('typst:compile-note-for-export', body),
   attachmentsList: (noteId) => ipcRenderer.invoke('attachments:list', noteId),
   attachmentsPickAndSave: (noteId) => ipcRenderer.invoke('attachments:pick-and-save', noteId),
   attachmentsSaveFile: (noteId, srcPath) => ipcRenderer.invoke('attachments:save-file', noteId, srcPath),
