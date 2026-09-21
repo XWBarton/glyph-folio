@@ -4,9 +4,9 @@ struct ExploreView: View {
     @EnvironmentObject var noteStore: NoteStore
     @Binding var selectedTab: Int
     @ObservedObject private var settings = AppSettings.shared
-    @State private var mode = 0          // 0 = Tags, 1 = Graph
+    @State private var mode = 0          // 0 = Tags, 1 = Heatmap, 2 = Matrix
     @State private var selectedTag: String? = nil
-    @State private var graphLens: GraphLens = .links
+    @State private var selectedTag2: String? = nil
     @State private var colorPickerTag: String? = nil
 
     private var allTags: [(tag: String, count: Int)] {
@@ -18,24 +18,39 @@ struct ExploreView: View {
     }
 
     private var filteredNotes: [Note] {
-        guard let tag = selectedTag else { return noteStore.notes }
-        return noteStore.notes.filter { $0.tags.contains(tag) }
+        noteStore.notes.filter { note in
+            (selectedTag == nil || note.tags.contains(selectedTag!))
+                && (selectedTag2 == nil || note.tags.contains(selectedTag2!))
+        }
+    }
+
+    /// Filters to a single tag — used by Clusters and the tag-pill row.
+    private func filter(toTag tag: String?) {
+        selectedTag = tag
+        selectedTag2 = nil
+    }
+
+    /// Filters to notes carrying both tags — used by the co-tag matrix's off-diagonal cells.
+    private func filter(toTagPair a: String, _ b: String) {
+        selectedTag = a
+        selectedTag2 = b
     }
 
     var body: some View {
         VStack(spacing: 0) {
             Picker("Mode", selection: $mode) {
                 Text("Tags").tag(0)
-                Text("Graph").tag(1)
+                Text("Heatmap").tag(1)
+                Text("Matrix").tag(2)
             }
             .pickerStyle(.segmented)
             .padding(.horizontal)
             .padding(.vertical, 10)
 
-            if mode == 0 {
-                tagsView
-            } else {
-                graphView
+            switch mode {
+            case 0: tagsView
+            case 1: heatmapView
+            default: matrixView
             }
         }
         .navigationTitle("Explore")
@@ -82,13 +97,13 @@ struct ExploreView: View {
                     HStack(spacing: 8) {
                         TagPill(label: "All", count: noteStore.notes.count,
                                 selected: selectedTag == nil) {
-                            selectedTag = nil
+                            filter(toTag: nil)
                         }
                         ForEach(allTags, id: \.tag) { item in
                             TagPill(label: item.tag, count: item.count,
-                                    selected: selectedTag == item.tag,
+                                    selected: selectedTag == item.tag && selectedTag2 == nil,
                                     color: settings.tagColors[item.tag].map(Color.init(hex:)) ?? tagHashColor(item.tag)) {
-                                selectedTag = selectedTag == item.tag ? nil : item.tag
+                                filter(toTag: selectedTag == item.tag && selectedTag2 == nil ? nil : item.tag)
                             }
                             .simultaneousGesture(
                                 LongPressGesture().onEnded { _ in colorPickerTag = item.tag }
@@ -97,6 +112,19 @@ struct ExploreView: View {
                     }
                     .padding(.horizontal)
                     .padding(.vertical, 8)
+                }
+
+                if let tag2 = selectedTag2, let tag1 = selectedTag {
+                    HStack(spacing: 6) {
+                        Text("Showing notes tagged both #\(tag1) and #\(tag2)")
+                            .font(.system(size: 12))
+                            .foregroundStyle(.secondary)
+                        Spacer()
+                        Button("Clear") { filter(toTag: nil) }
+                            .font(.system(size: 12, weight: .medium))
+                    }
+                    .padding(.horizontal)
+                    .padding(.bottom, 6)
                 }
 
                 Divider()
@@ -126,36 +154,34 @@ struct ExploreView: View {
         }
     }
 
-    // ── Graph mode ────────────────────────────────────────────────────────────
+    // ── Heatmap mode ──────────────────────────────────────────────────────────
 
     @ViewBuilder
-    private var graphView: some View {
-        if noteStore.notes.isEmpty {
-            VStack(spacing: 12) {
-                Spacer()
-                Image(systemName: "circle.hexagongrid")
-                    .font(.system(size: 40))
-                    .foregroundStyle(.secondary)
-                Text("No notes to graph")
-                    .foregroundStyle(.secondary)
-                Spacer()
-            }
+    private var heatmapView: some View {
+        if allTags.isEmpty {
+            emptyTagsPlaceholder
         } else {
-            VStack(spacing: 0) {
-                Picker("Lens", selection: $graphLens) {
-                    Text("Links").tag(GraphLens.links)
-                    Text("Tags").tag(GraphLens.tags)
-                }
-                .pickerStyle(.segmented)
-                .padding(.horizontal)
-                .padding(.vertical, 8)
+            HeatmapView(notes: noteStore.notes, tags: allTags) { tag in
+                filter(toTag: tag)
+                mode = 0
+            }
+        }
+    }
 
-                Divider()
+    // ── Matrix mode ───────────────────────────────────────────────────────────
 
-                GraphView(notes: noteStore.notes, lens: graphLens) { note in
-                    Task { await noteStore.select(note) }
-                    selectedTab = 0
+    @ViewBuilder
+    private var matrixView: some View {
+        if allTags.isEmpty {
+            emptyTagsPlaceholder
+        } else {
+            CoTagMatrixView(notes: noteStore.notes, tags: allTags) { a, b in
+                if a == b {
+                    filter(toTag: a)
+                } else {
+                    filter(toTagPair: a, b)
                 }
+                mode = 0
             }
         }
     }

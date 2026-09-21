@@ -72,11 +72,25 @@ let tagColorPalette: [String] = [
     "#65a30d", "#dc2626", "#d97706", "#4f46e5", "#0f766e", "#9333ea",
 ]
 
-/// Deterministic color from tag name — fallback when no user color is set
-func tagHashColor(_ tag: String) -> Color {
+/// Deterministic hex from tag name — fallback when no user color is set
+func tagHashHex(_ tag: String) -> String {
     var h: UInt32 = 0
     for c in tag.unicodeScalars { h = (h &* 31) &+ c.value }
-    return Color(hex: tagColorPalette[Int(h % UInt32(tagColorPalette.count))])
+    return tagColorPalette[Int(h % UInt32(tagColorPalette.count))]
+}
+
+func tagHashColor(_ tag: String) -> Color { Color(hex: tagHashHex(tag)) }
+
+/// Average of two hex colors — used to tint graph edges between differently-tagged nodes
+func blendHex(_ a: String, _ b: String) -> Color {
+    func components(_ hex: String) -> (Double, Double, Double) {
+        var v: UInt64 = 0
+        Scanner(string: hex.trimmingCharacters(in: CharacterSet.alphanumerics.inverted)).scanHexInt64(&v)
+        return (Double((v >> 16) & 0xFF) / 255, Double((v >> 8) & 0xFF) / 255, Double(v & 0xFF) / 255)
+    }
+    let (r1, g1, b1) = components(a)
+    let (r2, g2, b2) = components(b)
+    return Color(red: (r1 + r2) / 2, green: (g1 + g2) / 2, blue: (b1 + b2) / 2)
 }
 
 // ── Typst title rendering ─────────────────────────────────────────────────────
