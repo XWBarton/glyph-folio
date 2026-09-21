@@ -36,6 +36,7 @@
     "appId": "com.glyph.folio",
     "productName": "Glyph Folio",
     "electronVersion": "31.7.7",
+    "npmRebuild": false,
     "files": [
       "out/**/*"
     ],

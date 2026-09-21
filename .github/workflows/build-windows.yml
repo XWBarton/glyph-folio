@@ -18,16 +18,8 @@ jobs:
         with:
           node-version: 20
 
-      - name: Exclude workspace from Windows Defender
-        shell: powershell
-        run: Add-MpPreference -ExclusionPath "${{ github.workspace }}"
-
       - name: Install dependencies
         run: npm ci
-
-      - name: Verify 7zip-bin
-        shell: pwsh
-        run: Test-Path node_modules/7zip-bin/win/x64/7za.exe
 
       - name: Build Windows installer
         working-directory: desktop
