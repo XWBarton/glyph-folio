@@ -8,6 +8,9 @@ on:
       - "desktop/**"
       - ".github/workflows/build-windows.yml"
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: windows-latest
@@ -25,9 +28,21 @@ jobs:
         working-directory: desktop
         run: npm run dist -- --win --x64
 
-      - name: Upload installer
+      - name: Upload installer artifact
         uses: actions/upload-artifact@v4
         with:
           name: glyph-folio-windows
           path: |
             desktop/dist/*.exe
+
+      - name: Publish rolling release
+        if: github.event_name == 'push'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release delete latest --yes --cleanup-tag || true
+          gh release create latest desktop/dist/*.exe \
+            --title "Latest build (main)" \
+            --notes "Automated Windows build from main @ ${{ github.sha }}. Unsigned — Windows SmartScreen will warn on first run." \
+            --prerelease
