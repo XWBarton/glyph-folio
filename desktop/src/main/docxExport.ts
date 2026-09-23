@@ -35,6 +35,7 @@ type Block =
   | { type: 'code'; text: string }
   | { type: 'divider' }
   | { type: 'pagebreak' }
+  | { type: 'bibliography' }
 
 // ── Balanced-bracket scanning ────────────────────────────────────────────────
 // Typst source is well-formed, so tracking only one bracket kind at a time
@@ -214,6 +215,17 @@ function parseBlocks(body: string): Block[] {
 
     // Page break
     if (/^#pagebreak\(\)/.test(trimmed)) { blocks.push({ type: 'pagebreak' }); i = lineEnd + 1; continue }
+
+    // Bibliography placement marker — args are ignored (bib files are auto-discovered)
+    if (/^#bibliography\(/.test(trimmed)) {
+      const hashIdx = i + line.indexOf('#bibliography(')
+      const openParen = body.indexOf('(', hashIdx)
+      const closeParen = findMatchingClose(body, openParen, '(', ')')
+      blocks.push({ type: 'bibliography' })
+      i = closeParen + 1
+      if (body[i] === '\n') i++
+      continue
+    }
 
     // Style directives with no visible output
     if (/^#set\s+/.test(trimmed)) { i = lineEnd + 1; continue }
@@ -426,13 +438,38 @@ function collectFigureLabels(blocks: Block[]): Map<string, FigureLabelInfo> {
   return labels
 }
 
-function renderCitation(keys: string[], bracketed: boolean, ctx: RenderCtx): TextRun[] {
+function registerCitationKeys(keys: string[], ctx: RenderCtx): void {
   for (const key of keys) {
     if (!ctx.citationIndex.has(key)) {
       ctx.citationIndex.set(key, ctx.citationCounter.n++)
       ctx.usedCitations.push(key)
     }
   }
+}
+
+/**
+ * Walks every block's inline text in document order to register citations
+ * before rendering, so numbering reflects first appearance in the full text
+ * regardless of where a #bibliography() marker sits relative to its citations.
+ */
+function collectCitations(blocks: Block[], ctx: RenderCtx): void {
+  for (const b of blocks) {
+    const texts: string[] =
+      b.type === 'heading' || b.type === 'paragraph' ? [b.text]
+      : b.type === 'quote' ? [b.text, ...(b.attribution ? [b.attribution] : [])]
+      : b.type === 'list' ? b.items.map(item => item.text)
+      : b.type === 'figure' && b.caption ? [b.caption]
+      : []
+    for (const text of texts) {
+      for (const token of parseInline(text, ctx)) {
+        if (token.kind === 'citation') registerCitationKeys(token.keys, ctx)
+      }
+    }
+  }
+}
+
+function renderCitation(keys: string[], bracketed: boolean, ctx: RenderCtx): TextRun[] {
+  registerCitationKeys(keys, ctx)
 
   if (ctx.citationStyle === 'numbered') {
     const nums = keys.map(k => ctx.citationIndex.get(k)!)
@@ -582,11 +619,10 @@ function bibEntryToRuns(e: BibEntry): TextRun[] {
   return runs
 }
 
+// No heading is added here — the note supplies its own heading text if it wants one.
 function renderBibliographySection(ctx: RenderCtx): Paragraph[] {
   if (ctx.usedCitations.length === 0) return []
-  const out: Paragraph[] = [
-    new Paragraph({ heading: HeadingLevel.HEADING_1, text: 'References', spacing: { before: 400, after: 200 } })
-  ]
+  const out: Paragraph[] = []
 
   const keys = ctx.citationStyle === 'numbered'
     ? ctx.usedCitations
@@ -688,6 +724,10 @@ function renderBlocks(blocks: Block[], ctx: RenderCtx, notesDir: string): (Parag
       case 'pagebreak':
         out.push(new Paragraph({ children: [new PageBreak()] }))
         break
+
+      case 'bibliography':
+        out.push(...renderBibliographySection(ctx))
+        break
     }
   }
 
@@ -710,8 +750,13 @@ export async function compileDocx(note: Note, citationStyle: CitationStyle): Pro
     citationIndex: new Map(), usedCitations: [], citationCounter: { n: 1 }
   }
 
+  // A #bibliography() marker in the note places it inline; collect citations up
+  // front so numbering reflects first appearance regardless of where it sits.
+  // Without a marker, fall back to appending it at the end.
+  const hasBibliographyMarker = blocks.some(b => b.type === 'bibliography')
+  collectCitations(blocks, ctx)
   const bodyChildren = renderBlocks(blocks, ctx, notesDir)
-  const bibliographyChildren = renderBibliographySection(ctx)
+  const bibliographyChildren = hasBibliographyMarker ? [] : renderBibliographySection(ctx)
 
   const doc = new Document({
     features: { updateFields: true },

@@ -116,9 +116,6 @@ export async function compileNote(
     + preprocessCitations(body, knownKeys)
       .replace(/\[\[([^\]]+)\]\]/g, '#wikilink[$1]')
       .replace(/^---$/gm, '#line(length: 100%)')
-      // Drop any hand-written #bibliography(...) call — one is generated below,
-      // governed by the citation style setting, and Typst rejects duplicates.
-      .replace(/^\s*#bibliography\([^)]*\)\s*$/gm, '')
 
   if (cleanBody.includes('#cite(')) {
     const bibFiles = listBibFilenames()
@@ -127,7 +124,18 @@ export async function compileNote(
       const pathsArg = bibFiles.length === 1
         ? `"${bibFiles[0]}"`
         : `(${bibFiles.map(f => `"${f}"`).join(', ')})`
-      cleanBody += `\n#bibliography(${pathsArg}, style: "${styleName}")\n`
+      // No title: the note supplies its own heading text if it wants one.
+      const bibCall = `#bibliography(${pathsArg}, style: "${styleName}", title: none)`
+      // A hand-written #bibliography(...) call marks where it should go; only the
+      // first is honored (with its args replaced by the real ones) since Typst
+      // rejects duplicates, and any extras are dropped. Otherwise append at the end.
+      let injected = false
+      cleanBody = cleanBody.replace(/^\s*#bibliography\([^)]*\)\s*$/gm, () => {
+        if (injected) return ''
+        injected = true
+        return bibCall
+      })
+      if (!injected) cleanBody += `\n${bibCall}\n`
     }
   }
 

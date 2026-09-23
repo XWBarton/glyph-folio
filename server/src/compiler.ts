@@ -104,9 +104,6 @@ export async function compileTypst(content: string, noteId?: string, citationSty
   mkdirSync(stageDir, { recursive: true })
 
   let cleanContent = preprocessCitations(content, listBibKeys())
-    // Drop any hand-written #bibliography(...) call — one is generated below,
-    // governed by the citation style, and Typst rejects duplicates.
-    .replace(/^\s*#bibliography\([^)]*\)\s*$/gm, '')
 
   const bibFiles = listBibFilenames()
   if (cleanContent.includes('#cite(') && bibFiles.length > 0) {
@@ -116,7 +113,18 @@ export async function compileTypst(content: string, noteId?: string, citationSty
     const pathsArg = bibFiles.length === 1
       ? `"${bibFiles[0]}"`
       : `(${bibFiles.map(f => `"${f}"`).join(', ')})`
-    cleanContent += `\n#bibliography(${pathsArg}, style: "${styleName}")\n`
+    // No title: the note supplies its own heading text if it wants one.
+    const bibCall = `#bibliography(${pathsArg}, style: "${styleName}", title: none)`
+    // A hand-written #bibliography(...) call marks where it should go; only the
+    // first is honored (with its args replaced by the real ones) since Typst
+    // rejects duplicates, and any extras are dropped. Otherwise append at the end.
+    let injected = false
+    cleanContent = cleanContent.replace(/^\s*#bibliography\([^)]*\)\s*$/gm, () => {
+      if (injected) return ''
+      injected = true
+      return bibCall
+    })
+    if (!injected) cleanContent += `\n${bibCall}\n`
   }
 
   writeFileSync(inputPath, cleanContent, 'utf8')
