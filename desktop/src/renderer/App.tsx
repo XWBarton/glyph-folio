@@ -80,6 +80,13 @@ export default function App() {
     })
   }, [])
 
+  const handleClearAllWords = useCallback(() => {
+    setCustomDictionary(() => {
+      localStorage.setItem('folio-custom-dictionary', JSON.stringify([]))
+      return []
+    })
+  }, [])
+
   // ── Compiler ─────────────────────────────────────────────────────────────────
   const body  = activeNote?.body ?? ''
   const title = activeNote?.title ?? ''
@@ -455,6 +462,8 @@ export default function App() {
         onResetAll={resetColors}
         customDictionary={customDictionary}
         onRemoveWord={handleRemoveWord}
+        onAddWord={handleAddWord}
+        onClearAllWords={handleClearAllWords}
       />
     </div>
   )

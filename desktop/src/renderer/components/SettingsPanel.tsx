@@ -13,11 +13,13 @@ interface Props {
   onResetAll: () => void
   customDictionary: string[]
   onRemoveWord: (word: string) => void
+  onAddWord: (word: string) => void
+  onClearAllWords: () => void
 }
 
 export function SettingsPanel({
   open, onClose, settings, onSave, colors, onColorChange, onResetOne, onResetAll,
-  customDictionary, onRemoveWord
+  customDictionary, onRemoveWord, onAddWord, onClearAllWords
 }: Props) {
   const [syncMode, setSyncMode] = useState(settings.syncMode)
   const [citationStyle, setCitationStyle] = useState(settings.citationStyle ?? 'author-date')
@@ -32,6 +34,35 @@ export function SettingsPanel({
   const [installedDicts, setInstalledDicts] = useState<{ id: string; name: string; affPath: string; dicPath: string }[]>([])
   const [activeLang, setActiveLang] = useState(settings.spellLangName || 'English (built-in)')
   const [dictLoading, setDictLoading] = useState(false)
+  const [wordInput, setWordInput] = useState('')
+  const [wordFilter, setWordFilter] = useState('')
+  const [wordMsg, setWordMsg] = useState('')
+  const [armed, setArmed] = useState<string | null>(null) // a word, or the sentinel 'clear-all'
+  const armTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  useEffect(() => () => { if (armTimerRef.current) clearTimeout(armTimerRef.current) }, [])
+
+  const arm = (target: string) => {
+    if (armTimerRef.current) clearTimeout(armTimerRef.current)
+    setArmed(target)
+    armTimerRef.current = setTimeout(() => setArmed(null), 2000)
+  }
+  const disarm = () => {
+    if (armTimerRef.current) clearTimeout(armTimerRef.current)
+    armTimerRef.current = null
+    setArmed(null)
+  }
+  const submitAddWord = () => {
+    const trimmed = wordInput.trim().toLowerCase()
+    if (!trimmed) return
+    if (customDictionary.some(w => w.toLowerCase() === trimmed)) {
+      setWordMsg(`"${trimmed}" is already in your dictionary`)
+      return
+    }
+    onAddWord(trimmed)
+    setWordInput('')
+    setWordMsg('')
+  }
 
   useEffect(() => {
     setSyncMode(settings.syncMode)
@@ -236,7 +267,7 @@ export function SettingsPanel({
               ] as const).map(([mode, label]) => (
                 <button
                   key={mode}
-                  onClick={() => setCitationStyle(mode)}
+                  onClick={() => { setCitationStyle(mode); onSave({ citationStyle: mode }) }}
                   style={{
                     flex: 1,
                     background: citationStyle === mode ? 'rgba(37,99,235,0.12)' : 'rgba(255,255,255,0.5)',
@@ -322,38 +353,94 @@ export function SettingsPanel({
             </div>
 
             <div style={{
-              fontSize: 10, fontWeight: 600, color: 'var(--overlay)',
-              letterSpacing: '0.04em', textTransform: 'uppercase',
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
               margin: '10px 0 4px',
             }}>
-              Custom words · {customDictionary.length}
-            </div>
-            {customDictionary.length === 0 ? (
-              <span style={{ fontSize: 11, color: 'var(--overlay)', fontStyle: 'italic' }}>
-                Right-click a misspelled word to add it.
+              <span style={{
+                fontSize: 10, fontWeight: 600, color: 'var(--overlay)',
+                letterSpacing: '0.04em', textTransform: 'uppercase',
+              }}>
+                Custom words · {customDictionary.length}
               </span>
-            ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                {customDictionary.map(word => (
-                  <div key={word} style={{
-                    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                    background: 'rgba(255,255,255,0.45)',
-                    border: '1px solid rgba(255,255,255,0.7)',
-                    borderRadius: 7, padding: '4px 10px',
-                  }}>
-                    <span style={{ fontSize: 12, color: 'var(--text)' }}>{word}</span>
-                    <button
-                      onClick={() => onRemoveWord(word)}
-                      style={{
-                        background: 'none', border: 'none', cursor: 'pointer',
-                        color: 'var(--overlay)', fontSize: 11, padding: '0 2px', lineHeight: 1,
-                        fontFamily: 'inherit',
-                      }}
-                    >✕</button>
-                  </div>
-                ))}
+              {customDictionary.length > 0 && (
+                <button
+                  onClick={() => { if (armed === 'clear-all') { onClearAllWords(); disarm() } else { arm('clear-all') } }}
+                  style={armed === 'clear-all' ? {
+                    background: 'rgba(220,38,38,0.12)', border: '1px solid rgba(220,38,38,0.3)', color: 'var(--red)',
+                    fontSize: 10, padding: '2px 7px', borderRadius: 6, cursor: 'pointer', fontFamily: 'inherit',
+                  } : {
+                    background: 'rgba(255,255,255,0.6)', border: '1px solid rgba(255,255,255,0.8)', color: 'var(--subtext)',
+                    fontSize: 10, padding: '2px 7px', borderRadius: 6, cursor: 'pointer', fontFamily: 'inherit',
+                  }}
+                >{armed === 'clear-all' ? `Clear ${customDictionary.length}?` : 'Clear all'}</button>
+              )}
+            </div>
+
+            <div style={{ display: 'flex', gap: 4, marginBottom: wordMsg ? 2 : 4 }}>
+              <div style={{ flex: 1 }}>
+                <GlassInput
+                  value={wordInput}
+                  onChange={v => { setWordInput(v); if (wordMsg) setWordMsg('') }}
+                  placeholder="Add a word…"
+                  onEnter={submitAddWord}
+                />
+              </div>
+              <GlassBtn onClick={submitAddWord}>Add</GlassBtn>
+            </div>
+            {wordMsg && (
+              <div style={{ fontSize: 10, color: 'var(--overlay)', marginBottom: 4 }}>{wordMsg}</div>
+            )}
+
+            {customDictionary.length > 8 && (
+              <div style={{ marginBottom: 4 }}>
+                <GlassInput value={wordFilter} onChange={setWordFilter} placeholder="Filter…" />
               </div>
             )}
+
+            {customDictionary.length === 0 ? (
+              <span style={{ fontSize: 11, color: 'var(--overlay)', fontStyle: 'italic' }}>
+                No custom words yet. Right-click a misspelled word in the editor, or add one above.
+              </span>
+            ) : (() => {
+              const q = wordFilter.trim().toLowerCase()
+              const filtered = q ? customDictionary.filter(w => w.toLowerCase().includes(q)) : customDictionary
+              if (filtered.length === 0) {
+                return (
+                  <span style={{ fontSize: 11, color: 'var(--overlay)', fontStyle: 'italic' }}>
+                    No words match "{wordFilter.trim()}".
+                  </span>
+                )
+              }
+              return (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 2, maxHeight: 160, overflowY: 'auto', paddingRight: 4 }}>
+                  {filtered.map(word => (
+                    <div key={word} style={{
+                      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                      background: 'rgba(255,255,255,0.45)',
+                      border: '1px solid rgba(255,255,255,0.7)',
+                      borderRadius: 7, padding: '4px 10px',
+                    }}>
+                      <span style={{
+                        fontSize: 12, color: 'var(--text)', flex: 1, marginRight: 6,
+                        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                      }}>{word}</span>
+                      <button
+                        onClick={() => { if (armed === word) { onRemoveWord(word); disarm() } else { arm(word) } }}
+                        style={armed === word ? {
+                          background: 'rgba(220,38,38,0.12)', border: '1px solid rgba(220,38,38,0.3)',
+                          color: 'var(--red)', fontSize: 10, padding: '2px 6px', borderRadius: 5,
+                          cursor: 'pointer', fontFamily: 'inherit', flexShrink: 0,
+                        } : {
+                          background: 'none', border: 'none', cursor: 'pointer',
+                          color: 'var(--overlay)', fontSize: 11, padding: '0 2px', lineHeight: 1,
+                          fontFamily: 'inherit', flexShrink: 0,
+                        }}
+                      >{armed === word ? 'Delete?' : '✕'}</button>
+                    </div>
+                  ))}
+                </div>
+              )
+            })()}
           </Card>
 
           {/* ── Reminders ── */}
@@ -472,12 +559,13 @@ function Row({ label, value, children }: { label: string; value?: string; childr
   )
 }
 
-function GlassInput({ value, onChange, placeholder, password }: { value: string; onChange: (v: string) => void; placeholder?: string; password?: boolean }) {
+function GlassInput({ value, onChange, placeholder, password, onEnter }: { value: string; onChange: (v: string) => void; placeholder?: string; password?: boolean; onEnter?: () => void }) {
   return (
     <input
       type={password ? 'password' : 'text'}
       value={value}
       onChange={e => onChange(e.target.value)}
+      onKeyDown={onEnter ? (e => { if (e.key === 'Enter') onEnter() }) : undefined}
       placeholder={placeholder}
       style={{
         width: '100%', boxSizing: 'border-box',
