@@ -32,11 +32,21 @@ function getChecker(): NSpell {
 
 export function isCorrect(word: string, customWords: Set<string>): boolean {
   if (customWords.has(word.toLowerCase())) return true
+  let wholeIsCorrect: boolean
   try {
-    return getChecker().correct(word)
+    wholeIsCorrect = getChecker().correct(word)
   } catch {
     return true
   }
+  if (wholeIsCorrect) return true
+  // Dictionaries rarely list every hyphenated compound (e.g. "double-digest",
+  // "host-mediated") even though each half is a real word — accept the whole
+  // thing if every hyphen-separated part checks out on its own.
+  if (word.includes('-')) {
+    const parts = word.split('-').filter(Boolean)
+    if (parts.length > 1) return parts.every(p => isCorrect(p, customWords))
+  }
+  return false
 }
 
 export function getSuggestions(word: string): string[] {
