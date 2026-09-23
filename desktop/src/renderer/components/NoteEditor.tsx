@@ -1129,6 +1129,7 @@ export function NoteEditor({
     <div ref={containerRef} style={{ flex: 1, overflow: 'hidden', minWidth: 0, position: 'relative' }}>
       <MonacoEditor
         height="100%"
+        path={noteId}
         language={TYPST_LANGUAGE_ID}
         value={value}
         theme={isDark ? 'glyph-dark' : 'glyph-light'}
