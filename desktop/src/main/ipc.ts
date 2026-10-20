@@ -9,22 +9,11 @@ import {
   listNotes, readNote, writeNote, upsertNote, deleteNote, createNote, exportNotePdf, exportNoteDocx, resolveNotesDir, searchNotes,
   listAttachments, readAttachmentBuffer, writeAttachmentBuffer, deleteAttachmentFile,
   pickAndSaveAttachment, saveFileAsAttachment, renameWikiLinks, importNote,
-  extractTitle, listBibFiles
+  listBibFiles, applyReminderLine
 } from './notesManager'
 import { getStore } from './store'
 import { net } from 'electron'
-import { setReminder, cancelReminder, getReminder, testNotification } from './reminders'
-
-/** Sync reminder from note body: sets or cancels based on presence of // @reminder: line. */
-function syncReminderFromBody(noteId: string, body: string): void {
-  const match = body.match(/^\/\/ @reminder:\s*(.+)$/m)
-  if (match) {
-    const title = extractTitle(body, noteId)
-    setReminder(noteId, title, match[1].trim())
-  } else {
-    cancelReminder(noteId)
-  }
-}
+import { updateReminderForNote, listReminders, testNotification } from './reminders'
 
 /** Upload an attachment to the sync server (fire-and-forget; only runs in server mode). */
 async function uploadAttachmentToServer(noteId: string, filename: string, buf: Buffer): Promise<void> {
@@ -49,7 +38,12 @@ async function uploadAttachmentToServer(noteId: string, filename: string, buf: B
   }
 }
 
-export function registerIpcHandlers(): void {
+export interface IpcHooks {
+  onNotesDirChanged(): void
+  onBackgroundSettingsChanged(): void
+}
+
+export function registerIpcHandlers(hooks: IpcHooks): void {
   ipcMain.handle('notes:list', async () => {
     return listNotes()
   })
@@ -60,14 +54,13 @@ export function registerIpcHandlers(): void {
 
   ipcMain.handle('notes:write', async (_event, filePath: string, body: string) => {
     const result = writeNote(filePath, body)
-    const noteId = basename(filePath, '.typ')
-    syncReminderFromBody(noteId, body)
+    updateReminderForNote(basename(filePath, '.typ'), body)
     return result
   })
 
   ipcMain.handle('notes:upsert', async (_event, id: string, body: string, mtime?: string) => {
     const result = upsertNote(id, body, mtime)
-    syncReminderFromBody(id, body)
+    updateReminderForNote(id, body)
     return result
   })
 
@@ -75,7 +68,9 @@ export function registerIpcHandlers(): void {
   ipcMain.handle('sync:set-base', (_event, noteId: string, body: string) => setBase(noteId, body))
 
   ipcMain.handle('notes:delete', async (_event, filePath: string) => {
-    return deleteNote(filePath)
+    const result = deleteNote(filePath)
+    if (result.success) updateReminderForNote(basename(filePath, '.typ'), null)
+    return result
   })
 
   ipcMain.handle('notes:create', async (_event, title?: string) => {
@@ -129,7 +124,16 @@ export function registerIpcHandlers(): void {
   })
 
   ipcMain.handle('settings:set', async (_event, settings: Record<string, unknown>) => {
-    getStore().setAll(settings as Partial<import('./store').AppSettings>)
+    const store = getStore()
+    const before = store.getAll()
+    store.setAll(settings as Partial<import('./store').AppSettings>)
+    const after = store.getAll()
+    if (before.notesDir !== after.notesDir || before.syncMode !== after.syncMode) {
+      hooks.onNotesDirChanged()
+    }
+    if (before.runInBackground !== after.runInBackground || before.openAtLogin !== after.openAtLogin) {
+      hooks.onBackgroundSettingsChanged()
+    }
   })
 
   // Scan node_modules for installed dictionary-* packages
@@ -335,16 +339,17 @@ export function registerIpcHandlers(): void {
     }
   })
 
-  ipcMain.handle('reminder:set', (_event, noteId: string, noteTitle: string, scheduledAt: string) => {
-    setReminder(noteId, noteTitle, scheduledAt)
-  })
+  ipcMain.handle('reminder:list', () => listReminders())
 
-  ipcMain.handle('reminder:cancel', (_event, noteId: string) => {
-    cancelReminder(noteId)
-  })
-
-  ipcMain.handle('reminder:get', (_event, noteId: string) => {
-    return getReminder(noteId) ?? null
+  // Set / move / remove a note's reminder by rewriting its // @reminder: line
+  ipcMain.handle('reminder:update-note', (_event, noteId: string, isoDate: string | null) => {
+    const filePath = join(resolveNotesDir(), `${noteId}.typ`)
+    const note = readNote(filePath)
+    if (!note) return { success: false, error: 'Note not found' }
+    const body = applyReminderLine(note.body, isoDate)
+    const result = writeNote(filePath, body)
+    if (result.success) updateReminderForNote(noteId, body)
+    return result
   })
 
   ipcMain.handle('reminder:test', async () => {

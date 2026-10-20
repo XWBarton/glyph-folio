@@ -49,7 +49,7 @@ class NoteStore: ObservableObject {
                 UserDefaults.standard.set(true, forKey: "tutorialSeeded")
             }
             // Re-schedule any reminders from synced notes (picks up reminders set on other platforms)
-            rescheduleAllReminders()
+            await rescheduleAllReminders()
         } catch {
             print("NoteStore.load error:", error)
             if syncMode == .server { syncStatus = .offline }
@@ -350,7 +350,7 @@ class NoteStore: ObservableObject {
         do {
             try await provider.writeNote(n)
             if syncMode == .server { syncStatus = .synced }
-            scheduleReminderIfNeeded(for: n)
+            await scheduleReminderIfNeeded(for: n)
             // Rename [[Old Title]] → [[New Title]] in all other notes if title changed
             if let old = oldTitle, old != n.title, !old.isEmpty, !n.title.isEmpty {
                 await renameWikiLinks(from: old, to: n.title, excludingId: n.id)
@@ -402,6 +402,7 @@ class NoteStore: ObservableObject {
             activeNote = nil
         }
         try? await provider.deleteNote(id: note.id)
+        cancelReminderNotification(noteId: note.id)
     }
 
     // ── PDF compilation ───────────────────────────────────────────────────────
@@ -582,21 +583,93 @@ class NoteStore: ObservableObject {
     }
 
     // ── Reminder notifications ────────────────────────────────────────────────
+    // The note body is the source of truth (`// @reminder:` line); iOS's
+    // notification center holds one pending request per note, keyed by id.
 
-    func scheduleReminderIfNeeded(for note: Note) {
-        let center = UNUserNotificationCenter.current()
-        center.removePendingNotificationRequests(withIdentifiers: ["glyph-reminder-\(note.id)"])
-        guard let reminderDate = note.reminder, reminderDate > Date() else { return }
+    private static let reminderIdPrefix = "glyph-reminder-"
+    /// iOS keeps at most 64 pending local notifications per app.
+    private static let maxPendingReminders = 60
+
+    private func reminderRequestId(_ noteId: String) -> String { "\(Self.reminderIdPrefix)\(noteId)" }
+
+    private func makeReminderRequest(for note: Note, at date: Date) -> UNNotificationRequest {
         let content = UNMutableNotificationContent()
         content.title = note.title.isEmpty ? "Note Reminder" : note.title
-        content.body = "You set a reminder for this note."
+        let when = date.formatted(date: .abbreviated, time: .shortened)
+        let preview = note.previewLine
+        content.body = preview.isEmpty ? "Reminder · \(when)" : "Reminder · \(when)\n\(preview)"
         content.sound = .default
-        let components = Calendar.current.dateComponents([.year, .month, .day, .hour, .minute], from: reminderDate)
+        content.userInfo = ["noteId": note.id]
+        content.threadIdentifier = "glyph-reminders"
+        let components = Calendar.current.dateComponents([.year, .month, .day, .hour, .minute, .second], from: date)
         let trigger = UNCalendarNotificationTrigger(dateMatching: components, repeats: false)
-        let request = UNNotificationRequest(identifier: "glyph-reminder-\(note.id)", content: content, trigger: trigger)
-        center.add(request) { error in
-            if let error { print("Reminder schedule error:", error) }
+        return UNNotificationRequest(identifier: reminderRequestId(note.id), content: content, trigger: trigger)
+    }
+
+    /// Schedule (or clear) the notification for one note after it's saved.
+    func scheduleReminderIfNeeded(for note: Note) async {
+        let center = UNUserNotificationCenter.current()
+        let id = reminderRequestId(note.id)
+        guard let date = note.reminder, date > Date() else {
+            center.removePendingNotificationRequests(withIdentifiers: [id])
+            return
         }
+        do {
+            // add() with an existing identifier replaces that request
+            try await center.add(makeReminderRequest(for: note, at: date))
+        } catch {
+            print("Reminder schedule error:", error)
+        }
+    }
+
+    func cancelReminderNotification(noteId: String) {
+        let center = UNUserNotificationCenter.current()
+        let id = reminderRequestId(noteId)
+        center.removePendingNotificationRequests(withIdentifiers: [id])
+        center.removeDeliveredNotifications(withIdentifiers: [id])
+    }
+
+    /// Notes with a reminder, soonest first — overdue ones included so they can
+    /// be cleared from the Reminders tab.
+    var upcomingReminders: [(note: Note, date: Date)] {
+        notes.compactMap { note in note.reminder.map { (note: note, date: $0) } }
+            .sorted { $0.date < $1.date }
+    }
+
+    /// Overdue + due-today count, used for the tab badge.
+    var reminderBadgeCount: Int {
+        let endOfToday = Calendar.current.startOfDay(for: Date()).addingTimeInterval(86_400)
+        return upcomingReminders.filter { $0.date < endOfToday }.count
+    }
+
+    /// Set, move, or clear (nil) a note's reminder from outside the editor.
+    func setReminder(_ date: Date?, forNoteId noteId: String) async {
+        if activeNote?.id == noteId, let active = activeNote {
+            // Route through the normal edit path so the open editor stays in sync
+            updateBody(Note.applyingReminder(date, to: pendingBody ?? active.body))
+            await flushPendingSave()
+            return
+        }
+        guard let idx = notes.firstIndex(where: { $0.id == noteId }) else { return }
+        var note = notes[idx]
+        note.body = Note.applyingReminder(date, to: note.body)
+        note.modifiedAt = Date()
+        if syncMode == .server { syncStatus = .syncing }
+        do {
+            try await provider.writeNote(note)
+            if syncMode == .server { syncStatus = .synced }
+        } catch {
+            if syncMode == .server { syncStatus = .offline }
+        }
+        if let i = notes.firstIndex(where: { $0.id == noteId }) { notes[i] = note }
+        await scheduleReminderIfNeeded(for: note)
+    }
+
+    /// Open a note by id (e.g. from a tapped notification).
+    func openNote(id: String) async -> Bool {
+        guard let note = notes.first(where: { $0.id == id }) else { return false }
+        await select(note)
+        return true
     }
 
     /// Query the system for the current notification authorization state.
@@ -631,7 +704,7 @@ class NoteStore: ObservableObject {
         content.body = "Test notification — if you see this, reminders will work."
         content.sound = .default
         let trigger = UNTimeIntervalNotificationTrigger(timeInterval: 5, repeats: false)
-        let request = UNNotificationRequest(identifier: "glyph-reminder-test", content: content, trigger: trigger)
+        let request = UNNotificationRequest(identifier: "glyph-test-notification", content: content, trigger: trigger)
         do {
             try await UNUserNotificationCenter.current().add(request)
             return nil
@@ -642,16 +715,27 @@ class NoteStore: ObservableObject {
 
     /// Re-scans all loaded notes and schedules iOS notifications for any future // @reminder: lines.
     /// Called after load/sync so reminders set on other platforms (e.g. desktop) are picked up.
-    func rescheduleAllReminders() {
+    func rescheduleAllReminders() async {
         let center = UNUserNotificationCenter.current()
-        // Remove all existing glyph reminders first so stale ones don't linger
-        center.getPendingNotificationRequests { requests in
-            let glyphIds = requests.map(\.identifier).filter { $0.hasPrefix("glyph-reminder-") }
-            center.removePendingNotificationRequests(withIdentifiers: glyphIds)
-            // Re-schedule from current note state
-            for note in self.notes {
-                self.scheduleReminderIfNeeded(for: note)
+        let now = Date()
+        let wanted = notes
+            .compactMap { note -> (Note, Date)? in
+                guard let date = note.reminder, date > now else { return nil }
+                return (note, date)
             }
+            .sorted { $0.1 < $1.1 }
+            .prefix(Self.maxPendingReminders)
+        let wantedIds = Set(wanted.map { reminderRequestId($0.0.id) })
+
+        // Drop requests for reminders that were removed, moved past, or deleted
+        let pending = await center.pendingNotificationRequests()
+        let stale = pending.map(\.identifier)
+            .filter { $0.hasPrefix(Self.reminderIdPrefix) && !wantedIds.contains($0) }
+        center.removePendingNotificationRequests(withIdentifiers: stale)
+
+        for (note, date) in wanted {
+            do { try await center.add(makeReminderRequest(for: note, at: date)) }
+            catch { print("Reminder schedule error:", error) }
         }
     }
 

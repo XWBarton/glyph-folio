@@ -256,8 +256,8 @@ class EditorController: ObservableObject {
         tv.scrollRangeToVisible(titleRange)
     }
 
-    /// Inserts or replaces the // @reminder: line in the note.
-    func insertOrUpdateReminder(date: Date, replacingSlash: Bool = false) {
+    /// Inserts, replaces, or removes (nil) the // @reminder: line in the note.
+    func insertOrUpdateReminder(date: Date?, replacingSlash: Bool = false) {
         guard let tv = textView else { return }
 
         if replacingSlash,
@@ -268,10 +268,12 @@ class EditorController: ObservableObject {
             tv.replace(prevRange, withText: "")
         }
 
-        let df = DateFormatter()
-        df.dateFormat = "yyyy-MM-dd'T'HH:mm:ss"
-        df.locale = Locale(identifier: "en_US_POSIX")
-        let reminderLine = "// @reminder: \(df.string(from: date))"
+        guard let date else {
+            tv.text = Note.applyingReminder(nil, to: tv.text ?? "")
+            tv.delegate?.textViewDidChange?(tv)
+            return
+        }
+        let reminderLine = "// @reminder: \(Note.reminderFormatter.string(from: date))"
 
         let ns = NSMutableString(string: tv.text ?? "")
         let marker = "// @reminder:"
@@ -883,29 +885,64 @@ struct WikiLinkPicker: View {
 
 struct ReminderPickerView: View {
     @Binding var isPresented: Bool
+    /// Existing reminder, when editing.
+    let initialDate: Date?
+    let onRemove: (() -> Void)?
     let onSelect: (Date) -> Void
 
-    @State private var customDate = Date().addingTimeInterval(86400)
+    @State private var customDate: Date
     @State private var showCustom = false
 
-    private let quickOptions: [(label: String, icon: String, seconds: TimeInterval)] = [
-        ("In 1 hour",  "clock",                3_600),
-        ("Tomorrow",   "sunrise",             86_400),
-        ("In 3 days",  "calendar",        3 * 86_400),
-        ("In 1 week",  "calendar.badge.clock", 7 * 86_400),
-        ("In 2 weeks", "calendar.badge.plus", 14 * 86_400),
-        ("In 1 month", "calendar.circle",     30 * 86_400),
-    ]
+    init(isPresented: Binding<Bool>,
+         initialDate: Date? = nil,
+         onRemove: (() -> Void)? = nil,
+         onSelect: @escaping (Date) -> Void) {
+        _isPresented = isPresented
+        self.initialDate = initialDate
+        self.onRemove = onRemove
+        self.onSelect = onSelect
+        let fallback = Calendar.current.date(bySettingHour: 9, minute: 0, second: 0,
+                                             of: Date().addingTimeInterval(86_400)) ?? Date().addingTimeInterval(86_400)
+        _customDate = State(initialValue: initialDate.flatMap { $0 > Date() ? $0 : nil } ?? fallback)
+    }
+
+    /// Clock-aligned presets — same set as desktop.
+    private var quickOptions: [(label: String, icon: String, date: Date)] {
+        let cal = Calendar.current
+        let now = Date()
+        func at(_ dayOffset: Int, _ hour: Int) -> Date {
+            let day = cal.date(byAdding: .day, value: dayOffset, to: now) ?? now
+            return cal.date(bySettingHour: hour, minute: 0, second: 0, of: day) ?? day
+        }
+        var opts: [(String, String, Date)] = []
+        let inHour = cal.date(bySetting: .second, value: 0, of: now.addingTimeInterval(3_600)) ?? now.addingTimeInterval(3_600)
+        opts.append(("In 1 hour", "clock", inHour))
+        let hour = cal.component(.hour, from: now)
+        if hour + 3 < 18 { opts.append(("Later today", "sun.max", at(0, hour + 3))) }
+        if hour < 17 { opts.append(("This evening", "sunset", at(0, 18))) }
+        opts.append(("Tomorrow morning", "sunrise", at(1, 9)))
+        let weekday = cal.component(.weekday, from: now)  // 1 = Sunday, 2 = Monday
+        let daysToMonday = ((9 - weekday) % 7 == 0) ? 7 : (9 - weekday) % 7
+        if daysToMonday > 1 && daysToMonday < 7 { opts.append(("Next Monday", "calendar", at(daysToMonday, 9))) }
+        opts.append(("In 1 week", "calendar.badge.clock", at(7, 9)))
+        return opts.map { (label: $0.0, icon: $0.1, date: $0.2) }
+    }
 
     var body: some View {
         NavigationStack {
             List {
+                if let initialDate {
+                    Section {
+                        Label(initialDate.formatted(date: .abbreviated, time: .shortened), systemImage: "bell")
+                            .foregroundStyle(.secondary)
+                    } header: { Text("Current") }
+                }
                 if !showCustom {
                     Section("Quick") {
                         ForEach(quickOptions, id: \.label) { opt in
                             Button {
                                 isPresented = false
-                                onSelect(Date().addingTimeInterval(opt.seconds))
+                                onSelect(opt.date)
                             } label: {
                                 HStack(spacing: 12) {
                                     Image(systemName: opt.icon)
@@ -917,8 +954,7 @@ struct ReminderPickerView: View {
                                     VStack(alignment: .leading, spacing: 2) {
                                         Text(opt.label)
                                             .font(.system(size: 15, weight: .medium))
-                                        Text(Date().addingTimeInterval(opt.seconds)
-                                            .formatted(date: .abbreviated, time: .shortened))
+                                        Text(opt.date.formatted(date: .abbreviated, time: .shortened))
                                             .font(.caption).foregroundStyle(.secondary)
                                     }
                                 }
@@ -946,7 +982,7 @@ struct ReminderPickerView: View {
                         } label: {
                             HStack {
                                 Spacer()
-                                Text("Set Reminder")
+                                Text(initialDate == nil ? "Set Reminder" : "Update Reminder")
                                     .font(.system(size: 15, weight: .semibold))
                                     .foregroundStyle(.white)
                                     .padding(.horizontal, 24).padding(.vertical, 10)
@@ -955,10 +991,21 @@ struct ReminderPickerView: View {
                                 Spacer()
                             }
                         }
+                        .disabled(customDate <= Date())
+                    }
+                }
+                if let onRemove {
+                    Section {
+                        Button(role: .destructive) {
+                            isPresented = false
+                            onRemove()
+                        } label: {
+                            Label("Remove Reminder", systemImage: "bell.slash")
+                        }
                     }
                 }
             }
-            .navigationTitle("Set Reminder")
+            .navigationTitle(initialDate == nil ? "Set Reminder" : "Edit Reminder")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -1168,7 +1215,13 @@ struct NoteEditorView: View {
             }
         }
         .sheet(isPresented: $showReminderPicker) {
-            ReminderPickerView(isPresented: $showReminderPicker) { date in
+            ReminderPickerView(
+                isPresented: $showReminderPicker,
+                initialDate: Note.extractReminder(from: localBody),
+                onRemove: Note.extractReminder(from: localBody) == nil ? nil : {
+                    controller.insertOrUpdateReminder(date: nil, replacingSlash: true)
+                }
+            ) { date in
                 controller.insertOrUpdateReminder(date: date, replacingSlash: true)
             }
         }
@@ -1224,6 +1277,13 @@ struct NoteEditorView: View {
             }
         }
         .onChange(of: note.id) { _, _ in localBody = note.body }
+        // Pick up edits made outside the editor (e.g. a reminder changed from
+        // the Reminders tab). Typing round-trips the same text, so it's a no-op.
+        .onChange(of: noteStore.activeNote?.body) { _, newBody in
+            if let newBody, noteStore.activeNote?.id == note.id, newBody != localBody {
+                localBody = newBody
+            }
+        }
     }
 
     private func handleBookmark(_ rawURL: String) async {

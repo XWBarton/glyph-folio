@@ -36,6 +36,27 @@ export interface AppSettings {
   spellLangName: string
   authToken: string
   citationStyle: 'numbered' | 'author-date'
+  runInBackground: boolean
+  openAtLogin: boolean
+}
+
+export interface CompileDiagnostic {
+  severity: 'error' | 'warning'
+  message: string
+  /** 1-based line/column in the note body, when the problem is in the note. */
+  line?: number
+  column?: number
+  /** Set when the problem is in another file (e.g. a .bib or a package). */
+  file?: string
+  hints: string[]
+}
+
+export interface ReminderInfo {
+  noteId: string
+  noteTitle: string
+  scheduledAt: string  // local ISO 8601, no zone
+  fired: boolean
+  overdue: boolean
 }
 
 export interface FolioAPI {
@@ -51,7 +72,7 @@ export interface FolioAPI {
   notesSearch(query: string): Promise<SearchResult[]>
   notesRenameLinks(oldTitle: string, newTitle: string, excludeFilePath: string): Promise<string[]>
   bibList(): Promise<string[]>
-  typstCompileNote(body: string): Promise<{ pdfBytes: Uint8Array } | { error: string }>
+  typstCompileNote(body: string): Promise<{ pdfBytes: Uint8Array } | { error: string; diagnostics?: CompileDiagnostic[] }>
   typstCompileNoteForExport(body: string): Promise<{ pdfBytes: Uint8Array } | { error: string }>
   attachmentsList(noteId: string): Promise<string[]>
   attachmentsPickAndSave(noteId: string): Promise<{ filename: string } | null>
@@ -72,6 +93,8 @@ export interface FolioAPI {
   onMenuShareSource(cb: () => void): () => void
   onMenuImport(cb: () => void): () => void
   onMenuRerender(cb: () => void): () => void
+  onMenuReminders(cb: () => void): () => void
+  onMenuDictionary(cb: () => void): () => void
   onFullscreenChange(cb: (isFullscreen: boolean) => void): () => void
   syncGetBase(noteId: string): Promise<string | null>
   syncSetBase(noteId: string, body: string): Promise<void>
@@ -79,10 +102,11 @@ export interface FolioAPI {
   spellLoadDictFiles(affPath: string, dicPath: string, langName: string): Promise<{ aff: string; dic: string; name: string } | { error: string }>
   spellPickDict(): Promise<{ aff: string; dic: string; name: string; affPath: string; dicPath: string } | { error: string } | null>
   spellLoadDict(): Promise<{ aff: string; dic: string; name: string } | null>
-  reminderSet(noteId: string, noteTitle: string, scheduledAt: string): Promise<void>
-  reminderCancel(noteId: string): Promise<void>
-  reminderGet(noteId: string): Promise<{ noteId: string; noteTitle: string; scheduledAt: string } | null>
+  reminderList(): Promise<ReminderInfo[]>
+  reminderUpdateNote(noteId: string, isoDate: string | null): Promise<{ success: boolean; error?: string }>
   reminderTest(): Promise<{ supported: boolean; shown: boolean; error?: string }>
+  onRemindersChanged(cb: () => void): () => void
+  onReminderOpen(cb: (noteId: string) => void): () => void
 }
 
 const api: FolioAPI = {
@@ -158,10 +182,29 @@ const api: FolioAPI = {
   spellLoadDictFiles: (affPath, dicPath, langName) => ipcRenderer.invoke('spell:load-dict-files', affPath, dicPath, langName),
   spellPickDict: () => ipcRenderer.invoke('spell:pick-dict'),
   spellLoadDict: () => ipcRenderer.invoke('spell:load-dict'),
-  reminderSet: (noteId, noteTitle, scheduledAt) => ipcRenderer.invoke('reminder:set', noteId, noteTitle, scheduledAt),
-  reminderCancel: (noteId) => ipcRenderer.invoke('reminder:cancel', noteId),
-  reminderGet: (noteId) => ipcRenderer.invoke('reminder:get', noteId),
+  reminderList: () => ipcRenderer.invoke('reminder:list'),
+  reminderUpdateNote: (noteId, isoDate) => ipcRenderer.invoke('reminder:update-note', noteId, isoDate),
   reminderTest: () => ipcRenderer.invoke('reminder:test'),
+  onRemindersChanged: (cb) => {
+    const handler = () => cb()
+    ipcRenderer.on('reminders:changed', handler)
+    return () => ipcRenderer.off('reminders:changed', handler)
+  },
+  onReminderOpen: (cb) => {
+    const handler = (_: IpcRendererEvent, noteId: string) => cb(noteId)
+    ipcRenderer.on('reminder:open', handler)
+    return () => ipcRenderer.off('reminder:open', handler)
+  },
+  onMenuDictionary: (cb) => {
+    const handler = () => cb()
+    ipcRenderer.on('menu:dictionary', handler)
+    return () => ipcRenderer.off('menu:dictionary', handler)
+  },
+  onMenuReminders: (cb) => {
+    const handler = () => cb()
+    ipcRenderer.on('menu:reminders', handler)
+    return () => ipcRenderer.off('menu:reminders', handler)
+  },
   onFullscreenChange: (cb) => {
     const handler = (_: IpcRendererEvent, isFullscreen: boolean) => cb(isFullscreen)
     ipcRenderer.on('window:fullscreen', handler)

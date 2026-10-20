@@ -4,10 +4,14 @@ import { NoteEditor } from './components/NoteEditor'
 import { PreviewPane } from './components/PreviewPane'
 import { SettingsPanel } from './components/SettingsPanel'
 import { SearchModal } from './components/SearchModal'
+import { RemindersPanel } from './components/RemindersPanel'
+import { DictionaryModal } from './components/DictionaryModal'
 import { useNotes } from './hooks/useNotes'
 import { useNoteCompiler } from './hooks/useNoteCompiler'
 import { useTokenColors } from './hooks/useTokenColors'
 import { useServerSync } from './hooks/useServerSync'
+import { useReminders } from './hooks/useReminders'
+import { reminderGroup, toLocalISOString } from './lib/reminderTime'
 import type { AppSettings } from '../../preload/index'
 
 export default function App() {
@@ -20,10 +24,12 @@ export default function App() {
   const [settings, setSettings] = useState<AppSettings>({
     syncMode: 'local', serverUrl: '', notesDir: '', fontSize: 14,
     spellAffPath: '', spellDicPath: '', spellLangName: '', authToken: '',
-    citationStyle: 'author-date'
+    citationStyle: 'author-date', runInBackground: true, openAtLogin: false,
   })
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [searchOpen, setSearchOpen] = useState(false)
+  const [remindersOpen, setRemindersOpen] = useState(false)
+  const [dictionaryOpen, setDictionaryOpen] = useState(false)
   const [lastSaved, setLastSaved] = useState<Date | null>(null)
   const [isDirty, setIsDirty] = useState(false)
   const [focusTitleKey, setFocusTitleKey] = useState(0)
@@ -72,26 +78,32 @@ export default function App() {
     })
   }, [])
 
-  const handleRemoveWord = useCallback((word: string) => {
-    setCustomDictionary(prev => {
-      const next = prev.filter(w => w !== word)
-      localStorage.setItem('folio-custom-dictionary', JSON.stringify(next))
-      return next
-    })
-  }, [])
-
-  const handleClearAllWords = useCallback(() => {
-    setCustomDictionary(() => {
-      localStorage.setItem('folio-custom-dictionary', JSON.stringify([]))
-      return []
-    })
+  // Replace the whole list (dictionary modal): dedupe case-insensitively, sort, persist
+  const handleSetWords = useCallback((words: string[]) => {
+    const seen = new Set<string>()
+    const next = words.filter(w => {
+      const k = w.toLowerCase()
+      if (!w || seen.has(k)) return false
+      seen.add(k)
+      return true
+    }).sort((a, b) => a.localeCompare(b))
+    localStorage.setItem('folio-custom-dictionary', JSON.stringify(next))
+    setCustomDictionary(next)
   }, [])
 
   // ── Compiler ─────────────────────────────────────────────────────────────────
   const body  = activeNote?.body ?? ''
   const title = activeNote?.title ?? ''
 
-  const { pdfBytes, error, isCompiling, compile } = useNoteCompiler(body)
+  const { pdfBytes, error, diagnostics, isCompiling, compile } = useNoteCompiler(body)
+
+  // Clicking an error in the preview moves the editor cursor there
+  const [jumpTo, setJumpTo] = useState<{ line: number; column: number; key: number } | null>(null)
+  const handleJumpToError = useCallback((line: number, column: number) => {
+    // Bring the editor back if the preview is fullscreen
+    setSplitPct(v => (v <= 0 ? 50 : v))
+    setJumpTo({ line, column, key: Date.now() })
+  }, [])
 
   const displayCount = useMemo(() => {
     const base = selectedText !== '' ? selectedText : body
@@ -201,6 +213,38 @@ export default function App() {
     if (target) selectNote(target)
   }, [notes, selectNote])
 
+  // ── Reminders ────────────────────────────────────────────────────────────────
+  const reminders = useReminders()
+  const reminderBadge = useMemo(() => reminders.filter(r => {
+    const g = reminderGroup(new Date(r.scheduledAt))
+    return g === 'Overdue' || g === 'Today'
+  }).length, [reminders])
+
+  // Notification clicks can arrive before the notes list has loaded — hold the
+  // id until the note is available.
+  const [pendingOpenId, setPendingOpenId] = useState<string | null>(null)
+  useEffect(() => window.api.onReminderOpen(id => {
+    setPendingOpenId(id)
+    setSearchOpen(false)
+    setRemindersOpen(false)
+  }), [])
+  useEffect(() => {
+    if (!pendingOpenId) return
+    const target = notes.find(n => n.id === pendingOpenId)
+    if (target) { setPendingOpenId(null); setSearchOpen(false); selectNote(target) }
+  }, [pendingOpenId, notes, selectNote])
+
+  const handleOpenNoteById = useCallback((noteId: string) => {
+    const target = notes.find(n => n.id === noteId)
+    if (target) selectNote(target)
+  }, [notes, selectNote])
+
+  const handleReminderUpdate = useCallback(async (noteId: string, date: Date | null) => {
+    // Persist pending edits first so the main process rewrites the latest body
+    if (activeNote?.id === noteId) await flushSave()
+    await window.api.reminderUpdateNote(noteId, date ? toLocalISOString(date) : null)
+  }, [activeNote, flushSave])
+
   // ── Create/delete ─────────────────────────────────────────────────────────────
   const handleCreate = useCallback(async () => {
     const note = await createNote()
@@ -253,6 +297,8 @@ export default function App() {
       window.api.onMenuRerender(compile),
       window.api.onMenuShareSource(handleShareSource),
       window.api.onMenuImport(() => { importNote() }),
+      window.api.onMenuReminders(() => setRemindersOpen(v => !v)),
+      window.api.onMenuDictionary(() => setDictionaryOpen(v => !v)),
     ]
     return () => unsubs.forEach(fn => fn())
   }, [handleCreate, handleDelete, exportPdf, exportDocx, compile, activeNote, importNote])
@@ -334,6 +380,8 @@ export default function App() {
         onShare={(kind) => kind === 'pdf' ? exportPdf() : kind === 'docx' ? exportDocx() : handleShareSource()}
         onSettings={() => setSettingsOpen(v => !v)}
         onOpenNotes={() => setSearchOpen(true)}
+        onReminders={() => setRemindersOpen(v => !v)}
+        reminderBadge={reminderBadge}
       />
 
       <div ref={splitContainerRef} style={{
@@ -370,6 +418,8 @@ export default function App() {
                 onPasteImage={handlePasteImage}
                 focusTitleKey={focusTitleKey}
                 onSelectionChange={setSelectedText}
+                diagnostics={diagnostics}
+                jumpTo={jumpTo}
               />
             ) : (
               <EmptyState onOpen={() => setSearchOpen(true)} isLoading={isLoading} />
@@ -436,7 +486,7 @@ export default function App() {
             boxShadow: 'var(--glass-shadow), inset 0 1px 0 rgba(255,255,255,0.95)',
           }}>
             <ExpandBtn title={splitPct <= 0 ? 'Restore split' : 'Fullscreen preview'} onClick={() => setSplitPct(v => v <= 0 ? 50 : 0)} />
-            <PreviewPane pdfBytes={pdfBytes} error={error} isCompiling={isCompiling} noteId={activeNote?.id} />
+            <PreviewPane pdfBytes={pdfBytes} error={error} diagnostics={diagnostics} isCompiling={isCompiling} noteId={activeNote?.id} onJumpToError={handleJumpToError} />
           </div>
         )}
       </div>
@@ -451,6 +501,14 @@ export default function App() {
         onDelete={handleDelete}
       />
 
+      <RemindersPanel
+        open={remindersOpen}
+        reminders={reminders}
+        onClose={() => setRemindersOpen(false)}
+        onOpenNote={handleOpenNoteById}
+        onUpdate={handleReminderUpdate}
+      />
+
       <SettingsPanel
         open={settingsOpen}
         onClose={() => setSettingsOpen(false)}
@@ -460,10 +518,17 @@ export default function App() {
         onColorChange={updateColor}
         onResetOne={resetOne}
         onResetAll={resetColors}
-        customDictionary={customDictionary}
-        onRemoveWord={handleRemoveWord}
-        onAddWord={handleAddWord}
-        onClearAllWords={handleClearAllWords}
+        customWordCount={customDictionary.length}
+        onOpenDictionary={() => setDictionaryOpen(true)}
+      />
+
+      <DictionaryModal
+        open={dictionaryOpen}
+        onClose={() => setDictionaryOpen(false)}
+        words={customDictionary}
+        onChangeWords={handleSetWords}
+        spellLangName={settings.spellLangName}
+        onSaveSettings={handleSaveSettings}
       />
     </div>
   )

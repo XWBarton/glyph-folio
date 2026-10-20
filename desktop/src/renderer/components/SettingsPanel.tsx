@@ -11,15 +11,13 @@ interface Props {
   onColorChange: (id: string, color: string) => void
   onResetOne: (id: string) => void
   onResetAll: () => void
-  customDictionary: string[]
-  onRemoveWord: (word: string) => void
-  onAddWord: (word: string) => void
-  onClearAllWords: () => void
+  customWordCount: number
+  onOpenDictionary: () => void
 }
 
 export function SettingsPanel({
   open, onClose, settings, onSave, colors, onColorChange, onResetOne, onResetAll,
-  customDictionary, onRemoveWord, onAddWord, onClearAllWords
+  customWordCount, onOpenDictionary
 }: Props) {
   const [syncMode, setSyncMode] = useState(settings.syncMode)
   const [citationStyle, setCitationStyle] = useState(settings.citationStyle ?? 'author-date')
@@ -31,39 +29,6 @@ export function SettingsPanel({
   const [testMsg, setTestMsg] = useState('')
   const [notifStatus, setNotifStatus] = useState<'idle' | 'ok' | 'fail'>('idle')
   const [notifMsg, setNotifMsg] = useState('')
-  const [installedDicts, setInstalledDicts] = useState<{ id: string; name: string; affPath: string; dicPath: string }[]>([])
-  const [activeLang, setActiveLang] = useState(settings.spellLangName || 'English (built-in)')
-  const [dictLoading, setDictLoading] = useState(false)
-  const [wordInput, setWordInput] = useState('')
-  const [wordFilter, setWordFilter] = useState('')
-  const [wordMsg, setWordMsg] = useState('')
-  const [armed, setArmed] = useState<string | null>(null) // a word, or the sentinel 'clear-all'
-  const armTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null)
-
-  useEffect(() => () => { if (armTimerRef.current) clearTimeout(armTimerRef.current) }, [])
-
-  const arm = (target: string) => {
-    if (armTimerRef.current) clearTimeout(armTimerRef.current)
-    setArmed(target)
-    armTimerRef.current = setTimeout(() => setArmed(null), 2000)
-  }
-  const disarm = () => {
-    if (armTimerRef.current) clearTimeout(armTimerRef.current)
-    armTimerRef.current = null
-    setArmed(null)
-  }
-  const submitAddWord = () => {
-    const trimmed = wordInput.trim().toLowerCase()
-    if (!trimmed) return
-    if (customDictionary.some(w => w.toLowerCase() === trimmed)) {
-      setWordMsg(`"${trimmed}" is already in your dictionary`)
-      return
-    }
-    onAddWord(trimmed)
-    setWordInput('')
-    setWordMsg('')
-  }
-
   useEffect(() => {
     setSyncMode(settings.syncMode)
     setCitationStyle(settings.citationStyle ?? 'author-date')
@@ -71,42 +36,7 @@ export function SettingsPanel({
     setAuthToken(settings.authToken ?? '')
     setNotesDir(settings.notesDir)
     setFontSize(settings.fontSize)
-    setActiveLang(settings.spellLangName || 'English (built-in)')
   }, [settings])
-
-  useEffect(() => {
-    window.api.spellListInstalled().then(setInstalledDicts)
-  }, [])
-
-  const loadDict = async (affPath: string, dicPath: string, langName: string) => {
-    setDictLoading(true)
-    const result = await window.api.spellLoadDictFiles(affPath, dicPath, langName)
-    setDictLoading(false)
-    if ('error' in result) { alert(result.error); return }
-    const { reinitChecker } = await import('../lib/spellChecker')
-    reinitChecker(result.aff, result.dic)
-    setActiveLang(langName)
-    onSave({ spellAffPath: affPath, spellDicPath: dicPath, spellLangName: langName })
-  }
-
-  const pickCustomDict = async () => {
-    setDictLoading(true)
-    const result = await window.api.spellPickDict()
-    setDictLoading(false)
-    if (!result || 'error' in result) { if (result && 'error' in result) alert(result.error); return }
-    const { reinitChecker } = await import('../lib/spellChecker')
-    reinitChecker(result.aff, result.dic)
-    setActiveLang(result.name)
-    onSave({ spellAffPath: result.affPath, spellDicPath: result.dicPath, spellLangName: result.name })
-    window.api.spellListInstalled().then(setInstalledDicts)
-  }
-
-  const resetToBuiltIn = async () => {
-    const { resetToEnglish } = await import('../lib/spellChecker')
-    resetToEnglish()
-    setActiveLang('English (built-in)')
-    onSave({ spellAffPath: '', spellDicPath: '', spellLangName: '' })
-  }
 
   const handleSave = () => {
     onSave({ syncMode, serverUrl, authToken, notesDir, fontSize, citationStyle })
@@ -296,162 +226,43 @@ export function SettingsPanel({
 
           {/* ── Spelling ── */}
           <Card label="Spelling">
-            <Row label="Active">
-              <span style={{ fontSize: 11, color: 'var(--text)', fontWeight: 500, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{dictLoading ? 'Loading…' : activeLang}</span>
+            <Row label="Language">
+              <span style={{ fontSize: 11, color: 'var(--text)', fontWeight: 500, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {settings.spellLangName || 'English (built-in)'}
+              </span>
             </Row>
-
-            {/* Installed dicts */}
-            {installedDicts.length > 0 && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 2, margin: '8px 0 4px' }}>
-                {installedDicts.map(d => (
-                  <button
-                    key={d.id}
-                    onClick={() => loadDict(d.affPath, d.dicPath, d.name)}
-                    style={{
-                      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                      background: activeLang === d.name ? 'rgba(37,99,235,0.10)' : 'rgba(255,255,255,0.5)',
-                      border: `1px solid ${activeLang === d.name ? 'rgba(37,99,235,0.25)' : 'rgba(255,255,255,0.7)'}`,
-                      borderRadius: 8, padding: '5px 10px',
-                      fontSize: 12, color: activeLang === d.name ? 'var(--accent)' : 'var(--text)',
-                      cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left',
-                    }}
-                  >
-                    <span>{d.name}</span>
-                    {activeLang === d.name && <span style={{ fontSize: 10 }}>✓</span>}
-                  </button>
-                ))}
-              </div>
-            )}
-
-            <div style={{ display: 'flex', gap: 4, marginTop: 6 }}>
-              <GlassBtn onClick={pickCustomDict}>Choose .aff file…</GlassBtn>
-              {activeLang !== 'English (built-in)' && (
-                <GlassBtn onClick={resetToBuiltIn}>Reset</GlassBtn>
-              )}
-            </div>
-
-            {/* Install instructions */}
-            <div style={{
-              marginTop: 10, padding: '8px 10px',
-              background: 'rgba(0,0,0,0.03)', borderRadius: 8,
-              border: '1px solid rgba(0,0,0,0.06)',
-            }}>
-              <div style={{ fontSize: 10, color: 'var(--overlay)', marginBottom: 4 }}>
-                Install any language with one command, then restart:
-              </div>
-              <code style={{
-                fontSize: 10, color: 'var(--text)',
-                background: 'rgba(0,0,0,0.05)', borderRadius: 4,
-                padding: '3px 6px', display: 'block',
-                fontFamily: 'monospace', letterSpacing: 0,
-              }}>
-                npm install dictionary-en-au
-              </code>
-              <div style={{ fontSize: 10, color: 'var(--overlay)', marginTop: 4 }}>
-                Replace <code style={{ fontFamily: 'monospace' }}>en-au</code> with any code from <span style={{ color: 'var(--accent)' }}>npmjs.com</span>
-              </div>
-            </div>
-
-            <div style={{
-              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-              margin: '10px 0 4px',
-            }}>
-              <span style={{
-                fontSize: 10, fontWeight: 600, color: 'var(--overlay)',
-                letterSpacing: '0.04em', textTransform: 'uppercase',
-              }}>
-                Custom words · {customDictionary.length}
+            <Row label="Custom">
+              <span style={{ fontSize: 11, color: 'var(--text)', flex: 1 }}>
+                {customWordCount} word{customWordCount === 1 ? '' : 's'}
               </span>
-              {customDictionary.length > 0 && (
-                <button
-                  onClick={() => { if (armed === 'clear-all') { onClearAllWords(); disarm() } else { arm('clear-all') } }}
-                  style={armed === 'clear-all' ? {
-                    background: 'rgba(220,38,38,0.12)', border: '1px solid rgba(220,38,38,0.3)', color: 'var(--red)',
-                    fontSize: 10, padding: '2px 7px', borderRadius: 6, cursor: 'pointer', fontFamily: 'inherit',
-                  } : {
-                    background: 'rgba(255,255,255,0.6)', border: '1px solid rgba(255,255,255,0.8)', color: 'var(--subtext)',
-                    fontSize: 10, padding: '2px 7px', borderRadius: 6, cursor: 'pointer', fontFamily: 'inherit',
-                  }}
-                >{armed === 'clear-all' ? `Clear ${customDictionary.length}?` : 'Clear all'}</button>
-              )}
+            </Row>
+            <div style={{ marginTop: 8 }}>
+              <GlassBtn onClick={onOpenDictionary}>Open Dictionary… (⇧⌘D)</GlassBtn>
             </div>
-
-            <div style={{ display: 'flex', gap: 4, marginBottom: wordMsg ? 2 : 4 }}>
-              <div style={{ flex: 1 }}>
-                <GlassInput
-                  value={wordInput}
-                  onChange={v => { setWordInput(v); if (wordMsg) setWordMsg('') }}
-                  placeholder="Add a word…"
-                  onEnter={submitAddWord}
-                />
-              </div>
-              <GlassBtn onClick={submitAddWord}>Add</GlassBtn>
-            </div>
-            {wordMsg && (
-              <div style={{ fontSize: 10, color: 'var(--overlay)', marginBottom: 4 }}>{wordMsg}</div>
-            )}
-
-            {customDictionary.length > 8 && (
-              <div style={{ marginBottom: 4 }}>
-                <GlassInput value={wordFilter} onChange={setWordFilter} placeholder="Filter…" />
-              </div>
-            )}
-
-            {customDictionary.length === 0 ? (
-              <span style={{ fontSize: 11, color: 'var(--overlay)', fontStyle: 'italic' }}>
-                No custom words yet. Right-click a misspelled word in the editor, or add one above.
-              </span>
-            ) : (() => {
-              const q = wordFilter.trim().toLowerCase()
-              const filtered = q ? customDictionary.filter(w => w.toLowerCase().includes(q)) : customDictionary
-              if (filtered.length === 0) {
-                return (
-                  <span style={{ fontSize: 11, color: 'var(--overlay)', fontStyle: 'italic' }}>
-                    No words match "{wordFilter.trim()}".
-                  </span>
-                )
-              }
-              return (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 2, maxHeight: 160, overflowY: 'auto', paddingRight: 4 }}>
-                  {filtered.map(word => (
-                    <div key={word} style={{
-                      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                      background: 'rgba(255,255,255,0.45)',
-                      border: '1px solid rgba(255,255,255,0.7)',
-                      borderRadius: 7, padding: '4px 10px',
-                    }}>
-                      <span style={{
-                        fontSize: 12, color: 'var(--text)', flex: 1, marginRight: 6,
-                        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                      }}>{word}</span>
-                      <button
-                        onClick={() => { if (armed === word) { onRemoveWord(word); disarm() } else { arm(word) } }}
-                        style={armed === word ? {
-                          background: 'rgba(220,38,38,0.12)', border: '1px solid rgba(220,38,38,0.3)',
-                          color: 'var(--red)', fontSize: 10, padding: '2px 6px', borderRadius: 5,
-                          cursor: 'pointer', fontFamily: 'inherit', flexShrink: 0,
-                        } : {
-                          background: 'none', border: 'none', cursor: 'pointer',
-                          color: 'var(--overlay)', fontSize: 11, padding: '0 2px', lineHeight: 1,
-                          fontFamily: 'inherit', flexShrink: 0,
-                        }}
-                      >{armed === word ? 'Delete?' : '✕'}</button>
-                    </div>
-                  ))}
-                </div>
-              )
-            })()}
           </Card>
 
           {/* ── Reminders ── */}
           <Card label="Reminders">
             <div style={{ fontSize: 11, color: 'var(--subtext)', marginBottom: 8, lineHeight: 1.4 }}>
-              Use <code style={{ fontFamily: 'monospace' }}>/remind</code> in a note to schedule one.
+              Use <code style={{ fontFamily: 'monospace' }}>/remind</code> in a note to schedule one, and
+              {' '}<b>⌥⌘R</b> or the bell to see everything upcoming.
               If banners don't appear, grant notification permission to
               {' '}<code style={{ fontFamily: 'monospace' }}>Glyph Folio</code> (or
               {' '}<code style={{ fontFamily: 'monospace' }}>Electron</code> in dev)
               {' '}in System Settings.
             </div>
+            <ToggleRow
+              label={navigator.platform.startsWith('Mac') ? 'Keep running in menu bar' : 'Keep running in system tray'}
+              hint="Closing the window or quitting keeps Glyph Folio in the background so reminders still fire."
+              checked={settings.runInBackground ?? true}
+              onChange={v => onSave({ runInBackground: v })}
+            />
+            <ToggleRow
+              label="Open at login"
+              hint="Starts hidden in the background after you sign in."
+              checked={settings.openAtLogin ?? false}
+              onChange={v => onSave({ openAtLogin: v })}
+            />
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <GlassBtn onClick={testNotification}>Test notification</GlassBtn>
               {notifMsg && (
@@ -602,6 +413,25 @@ function ColorSwatch({ color, onChange }: { color: string; onChange: (c: string)
         style={{ position: 'absolute', inset: 0, opacity: 0, width: '100%', height: '100%', cursor: 'pointer' }}
       />
     </div>
+  )
+}
+
+function ToggleRow({ label, hint, checked, onChange }: {
+  label: string; hint?: string; checked: boolean; onChange: (v: boolean) => void
+}) {
+  return (
+    <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, marginBottom: 8, cursor: 'pointer' }}>
+      <input
+        type="checkbox"
+        checked={checked}
+        onChange={e => onChange(e.target.checked)}
+        style={{ marginTop: 2, accentColor: 'var(--accent)', cursor: 'pointer' }}
+      />
+      <span>
+        <span style={{ display: 'block', fontSize: 12, color: 'var(--text)' }}>{label}</span>
+        {hint && <span style={{ display: 'block', fontSize: 10, color: 'var(--overlay)', lineHeight: 1.35 }}>{hint}</span>}
+      </span>
+    </label>
   )
 }
 

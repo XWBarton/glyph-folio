@@ -16,6 +16,7 @@
 		A3AFD11ECF4369F3C37393BB /* ServerSyncProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A1CC97532B9658F2F37E752 /* ServerSyncProvider.swift */; };
 		A9CC5BDB0E1AEDB547D4CD09 /* NoteStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8040FABB4F612CD0C857825C /* NoteStore.swift */; };
 		AA11BB22CC33DD44EE55FF01 /* ExploreView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA11BB22CC33DD44EE55FF02 /* ExploreView.swift */; };
+		AA11BB22CC33DD44EE55FF10 /* RemindersView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA11BB22CC33DD44EE55FF11 /* RemindersView.swift */; };
 		AA11BB22CC33DD44EE55FF07 /* HeatmapView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA11BB22CC33DD44EE55FF08 /* HeatmapView.swift */; };
 		AA11BB22CC33DD44EE55FF09 /* CoTagMatrixView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA11BB22CC33DD44EE55FF0A /* CoTagMatrixView.swift */; };
 		ACF110C22E8CC1609CB5CCD7 /* Note.swift in Sources */ = {isa = PBXBuildFile; fileRef = 12A9B8C2D7D6B4435A1E03B0 /* Note.swift */; };
@@ -43,6 +44,7 @@
 		884DD12693159F52FE3A52E1 /* GlyphFolioApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GlyphFolioApp.swift; sourceTree = "<group>"; };
 		A0BF29516948B8B7FAE5A9C3 /* ICloudSyncProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ICloudSyncProvider.swift; sourceTree = "<group>"; };
 		AA11BB22CC33DD44EE55FF02 /* ExploreView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExploreView.swift; sourceTree = "<group>"; };
+		AA11BB22CC33DD44EE55FF11 /* RemindersView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemindersView.swift; sourceTree = "<group>"; };
 		AA11BB22CC33DD44EE55FF08 /* HeatmapView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HeatmapView.swift; sourceTree = "<group>"; };
 		AA11BB22CC33DD44EE55FF0A /* CoTagMatrixView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoTagMatrixView.swift; sourceTree = "<group>"; };
 		AE74864535F042821F9FA214 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
@@ -61,6 +63,7 @@
 				AA11BB22CC33DD44EE55FF0A /* CoTagMatrixView.swift */,
 				6EBDEE54FA903B47C413882A /* DesignHelpers.swift */,
 				AA11BB22CC33DD44EE55FF02 /* ExploreView.swift */,
+				AA11BB22CC33DD44EE55FF11 /* RemindersView.swift */,
 				AA11BB22CC33DD44EE55FF08 /* HeatmapView.swift */,
 				145D7945A07DD4998F0C5D6F /* NoteDetailView.swift */,
 				7217447848A292FB1B78A548 /* NoteEditorView.swift */,
@@ -204,6 +207,7 @@
 				BB22CC33DD44EE55FF660011 /* ZipArchive.swift in Sources */,
 				E6E2E0E47416376939C7C580 /* NotesListView.swift in Sources */,
 				AA11BB22CC33DD44EE55FF01 /* ExploreView.swift in Sources */,
+				AA11BB22CC33DD44EE55FF10 /* RemindersView.swift in Sources */,
 				AA11BB22CC33DD44EE55FF07 /* HeatmapView.swift in Sources */,
 				AA11BB22CC33DD44EE55FF09 /* CoTagMatrixView.swift in Sources */,
 				8DF30CEE22FC336A109D6260 /* PDFPreviewView.swift in Sources */,

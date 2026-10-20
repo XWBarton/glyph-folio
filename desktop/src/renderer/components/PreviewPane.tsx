@@ -1,11 +1,15 @@
 import React, { useRef, useState, useCallback } from 'react'
 import { usePdfRenderer } from '../hooks/usePdfRenderer'
+import type { CompileDiagnostic } from '../../../preload/index'
 
 interface Props {
   pdfBytes: Uint8Array | null
   error: string | null
+  diagnostics?: CompileDiagnostic[]
   isCompiling: boolean
   noteId?: string
+  /** Move the editor cursor to a 1-based line/column in the note. */
+  onJumpToError?: (line: number, column: number) => void
 }
 
 const ZOOM_LEVELS = [0.5, 0.75, 1, 1.25, 1.5, 2, 3]
@@ -14,7 +18,7 @@ function zoomLabel(z: number): string {
   return z === 1 ? 'Fit' : `${Math.round(z * 100)}%`
 }
 
-export function PreviewPane({ pdfBytes, error, isCompiling, noteId }: Props) {
+export function PreviewPane({ pdfBytes, error, diagnostics = [], isCompiling, noteId, onJumpToError }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
   const [zoomIdx, setZoomIdx] = useState(2) // default: index 2 = 1.0 (Fit)
   const [fitKey, setFitKey] = useState(0)
@@ -106,7 +110,7 @@ export function PreviewPane({ pdfBytes, error, isCompiling, noteId }: Props) {
       )}
 
       {/* Error toast */}
-      {error && <ErrorToast error={error} />}
+      {error && <ErrorPanel error={error} diagnostics={diagnostics} onJump={onJumpToError} />}
     </div>
   )
 }
@@ -130,8 +134,14 @@ function zoomBtnStyle(disabled: boolean): React.CSSProperties {
   }
 }
 
-function ErrorToast({ error }: { error: string }) {
+/** Compile errors, each clickable to jump to its line/column in the editor. */
+function ErrorPanel({ error, diagnostics, onJump }: {
+  error: string
+  diagnostics: CompileDiagnostic[]
+  onJump?: (line: number, column: number) => void
+}) {
   const [copied, setCopied] = useState(false)
+  const [collapsed, setCollapsed] = useState(false)
 
   const copy = () => {
     navigator.clipboard.writeText(error)
@@ -139,57 +149,117 @@ function ErrorToast({ error }: { error: string }) {
     setTimeout(() => setCopied(false), 1500)
   }
 
+  // Fall back to the raw stderr when nothing could be parsed
+  const items: CompileDiagnostic[] = diagnostics.length
+    ? diagnostics
+    : [{ severity: 'error', message: error, hints: [] }]
+  const errorCount = items.filter(d => d.severity === 'error').length
+  const warningCount = items.length - errorCount
+  const summary = [
+    errorCount ? `${errorCount} error${errorCount === 1 ? '' : 's'}` : '',
+    warningCount ? `${warningCount} warning${warningCount === 1 ? '' : 's'}` : '',
+  ].filter(Boolean).join(', ')
+
+  const iconBtn = (active: boolean): React.CSSProperties => ({
+    flexShrink: 0,
+    background: active ? 'rgba(22,163,74,0.10)' : 'rgba(220,38,38,0.07)',
+    border: `1px solid ${active ? 'rgba(22,163,74,0.2)' : 'rgba(220,38,38,0.15)'}`,
+    borderRadius: 6,
+    padding: '2px 7px',
+    fontSize: 11,
+    color: active ? 'var(--green)' : 'var(--red)',
+    cursor: 'pointer',
+    fontFamily: 'inherit',
+    transition: 'all 0.15s',
+  })
+
   return (
     <div style={{
       position: 'absolute',
       bottom: 14,
       left: '50%',
       transform: 'translateX(-50%)',
-      background: 'rgba(255,255,255,0.92)',
+      width: 'min(560px, 88%)',
+      background: 'rgba(255,255,255,0.94)',
       backdropFilter: 'blur(16px)',
       WebkitBackdropFilter: 'blur(16px)',
       border: '1px solid rgba(220,38,38,0.25)',
       borderRadius: 'var(--radius)',
-      padding: '8px 10px 8px 14px',
-      maxWidth: '88%',
       zIndex: 10,
       boxShadow: '0 4px 20px rgba(220,38,38,0.08), inset 0 1px 0 rgba(255,255,255,0.9)',
-      display: 'flex',
-      alignItems: 'flex-start',
-      gap: 8,
+      overflow: 'hidden',
     }}>
-      <pre style={{
-        flex: 1,
-        margin: 0,
-        whiteSpace: 'pre-wrap',
-        fontFamily: "'JetBrains Mono', Menlo, monospace",
-        fontSize: 11,
-        color: 'var(--red)',
-        userSelect: 'text',
-        cursor: 'text',
-        lineHeight: 1.5,
+      {/* Header */}
+      <div style={{
+        display: 'flex', alignItems: 'center', gap: 8,
+        padding: '6px 8px 6px 12px',
+        borderBottom: collapsed ? 'none' : '1px solid rgba(220,38,38,0.12)',
       }}>
-        {error}
-      </pre>
-      <button
-        onClick={copy}
-        title="Copy error"
-        style={{
-          flexShrink: 0,
-          background: copied ? 'rgba(22,163,74,0.10)' : 'rgba(220,38,38,0.07)',
-          border: `1px solid ${copied ? 'rgba(22,163,74,0.2)' : 'rgba(220,38,38,0.15)'}`,
-          borderRadius: 6,
-          padding: '3px 8px',
-          fontSize: 11,
-          color: copied ? 'var(--green)' : 'var(--red)',
-          cursor: 'pointer',
-          fontFamily: 'inherit',
-          transition: 'all 0.15s',
-          marginTop: 1,
-        }}
-      >
-        {copied ? '✓' : '⎘'}
-      </button>
+        <span style={{ color: 'var(--red)', fontSize: 11, fontWeight: 600, flex: 1 }}>
+          ⚠ {summary || 'Compile error'}
+        </span>
+        <button onClick={copy} title="Copy full error output" style={iconBtn(copied)}>
+          {copied ? '✓' : '⎘'}
+        </button>
+        <button onClick={() => setCollapsed(c => !c)} title={collapsed ? 'Show errors' : 'Hide errors'} style={iconBtn(false)}>
+          {collapsed ? '▴' : '▾'}
+        </button>
+      </div>
+
+      {!collapsed && (
+        <div style={{ maxHeight: 180, overflowY: 'auto', padding: 4 }}>
+          {items.map((d, i) => (
+            <DiagnosticRow key={i} d={d} onJump={onJump} />
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function DiagnosticRow({ d, onJump }: { d: CompileDiagnostic; onJump?: (line: number, column: number) => void }) {
+  const [hovered, setHovered] = useState(false)
+  const jumpable = !!onJump && d.line !== undefined
+  const color = d.severity === 'error' ? 'var(--red)' : 'var(--yellow)'
+  const location = d.line !== undefined ? `Ln ${d.line}, Col ${d.column ?? 1}` : d.file ?? ''
+
+  return (
+    <div
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      onClick={jumpable ? () => onJump!(d.line!, d.column ?? 1) : undefined}
+      title={jumpable ? 'Go to error' : undefined}
+      style={{
+        display: 'flex', alignItems: 'flex-start', gap: 8,
+        padding: '5px 8px', borderRadius: 6,
+        cursor: jumpable ? 'pointer' : 'text',
+        background: jumpable && hovered ? 'rgba(220,38,38,0.06)' : 'transparent',
+        transition: 'background 0.1s',
+      }}
+    >
+      <span style={{ color, fontSize: 9, lineHeight: '17px', flexShrink: 0 }}>●</span>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{
+          fontFamily: "'JetBrains Mono', Menlo, monospace",
+          fontSize: 11, color, lineHeight: 1.5,
+          whiteSpace: 'pre-wrap', wordBreak: 'break-word',
+          userSelect: jumpable ? 'none' : 'text',
+        }}>
+          {d.message}
+        </div>
+        {d.hints.map((h, i) => (
+          <div key={i} style={{ fontSize: 10, color: 'var(--subtext)', lineHeight: 1.4 }}>hint: {h}</div>
+        ))}
+      </div>
+      {location && (
+        <span style={{
+          flexShrink: 0, fontSize: 10, lineHeight: '17px', whiteSpace: 'nowrap',
+          color: jumpable ? 'var(--accent)' : 'var(--overlay)',
+          textDecoration: jumpable && hovered ? 'underline' : 'none',
+        }}>
+          {location}{jumpable ? ' →' : ''}
+        </span>
+      )}
     </div>
   )
 }

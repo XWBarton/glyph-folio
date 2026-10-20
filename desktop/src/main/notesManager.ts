@@ -72,6 +72,29 @@ function extractTags(body: string): string[] {
   return match[1].split(',').map(t => t.trim()).filter(Boolean)
 }
 
+// ── Reminder line ─────────────────────────────────────────────────────────────
+
+/**
+ * Set, replace, or remove the `// @reminder:` line. New lines go right after
+ * `// @tags:` (or at the top), matching what the editor's /remind does.
+ */
+export function applyReminderLine(body: string, isoDate: string | null): string {
+  const lines = body.split('\n')
+  const existingIdx = lines.findIndex(l => /^\/\/\s*@reminder:/.test(l))
+  if (isoDate === null) {
+    if (existingIdx !== -1) lines.splice(existingIdx, 1)
+    return lines.join('\n')
+  }
+  const reminderLine = `// @reminder: ${isoDate}`
+  if (existingIdx !== -1) {
+    lines[existingIdx] = reminderLine
+  } else {
+    const tagsIdx = lines.findIndex(l => /^\/\/ @tags:/.test(l))
+    lines.splice(tagsIdx !== -1 ? tagsIdx + 1 : 0, 0, reminderLine)
+  }
+  return lines.join('\n')
+}
+
 // ── Link extraction ───────────────────────────────────────────────────────────
 
 function extractLinks(body: string): string[] {

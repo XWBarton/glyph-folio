@@ -4,6 +4,12 @@ import { join } from 'path'
 import { writeFileSync, readFileSync, unlinkSync, existsSync } from 'fs'
 import { randomUUID } from 'crypto'
 import { resolveNotesDir, listBibFilenames, listBibKeys, ensurePreviewCache, PREVIEW_CACHE_DIR } from './notesManager'
+import {
+  mapLines, generatedLines, replaceMapped, replaceWholeLine, joinMapped, parseDiagnostics,
+  type MappedLine, type CompileDiagnostic,
+} from './sourceMap'
+
+export type { CompileDiagnostic }
 
 export type CitationStyle = 'numbered' | 'author-date'
 
@@ -39,7 +45,7 @@ function findTypstBin(): string {
 const TYPST_BIN = findTypstBin()
 
 interface CompileSuccess { pdfBytes: Uint8Array }
-interface CompileError   { error: string }
+interface CompileError   { error: string; diagnostics?: CompileDiagnostic[] }
 type CompileResult = CompileSuccess | CompileError
 
 let activeProcess: ChildProcess | null = null
@@ -66,21 +72,14 @@ const WIKILINK_DEF =
  * keep working natively (Typst resolves `@label` to "Figure 1" etc. on its own).
  * Comment lines (// ...) are left untouched since Typst ignores them anyway.
  */
-function preprocessCitations(body: string, knownKeys: Set<string>): string {
-  if (knownKeys.size === 0) return body
-  return body
-    .split('\n')
-    .map(line => {
-      if (/^\s*\/\//.test(line)) return line
-      return line
-        .replace(/\[(@[\w:-]+(?:\s*;\s*@[\w:-]+)*)\]/g, (m, group: string) => {
-          const parts = group.split(/\s*;\s*/)
-          if (!parts.every(p => knownKeys.has(p.slice(1)))) return m
-          return parts.map(part => `#cite(<${part.slice(1)}>)`).join(' ')
-        })
-        .replace(/@([\w:-]+)/g, (m, key: string) => knownKeys.has(key) ? `#cite(<${key}>, form: "prose")` : m)
-    })
-    .join('\n')
+function preprocessCitations(line: MappedLine, knownKeys: Set<string>): MappedLine {
+  if (knownKeys.size === 0 || /^\s*\/\//.test(line.text)) return line
+  const bracketed = replaceMapped(line, /\[(@[\w:-]+(?:\s*;\s*@[\w:-]+)*)\]/g, (m, group: string) => {
+    const parts = group.split(/\s*;\s*/)
+    if (!parts.every(p => knownKeys.has(p.slice(1)))) return m
+    return parts.map(part => `#cite(<${part.slice(1)}>)`).join(' ')
+  })
+  return replaceMapped(bracketed, /@([\w:-]+)/g, (m, key: string) => knownKeys.has(key) ? `#cite(<${key}>, form: "prose")` : m)
 }
 
 /**
@@ -90,8 +89,8 @@ function preprocessCitations(body: string, knownKeys: Set<string>): string {
  * before preview caching existed), then reused on every later compile.
  * Originals (used for export) are never touched.
  */
-function rewriteImagesForPreview(body: string): string {
-  return body.replace(/image\("attachments\/([^/"]+)\/([^"]+)"/g, (match, noteId: string, filename: string) => {
+function rewriteImagesForPreview(line: MappedLine): MappedLine {
+  return replaceMapped(line, /image\("attachments\/([^/"]+)\/([^"]+)"/g, (match, noteId: string, filename: string) => {
     if (!ensurePreviewCache(noteId, filename)) return match
     return `image("attachments/${noteId}/${PREVIEW_CACHE_DIR}/${filename}"`
   })
@@ -112,12 +111,19 @@ export async function compileNote(
 ): Promise<CompileResult> {
   const hasLinks = /\[\[/.test(body)
   const knownKeys = listBibKeys()
-  let cleanBody = (hasLinks ? WIKILINK_DEF : '')
-    + preprocessCitations(body, knownKeys)
-      .replace(/\[\[([^\]]+)\]\]/g, '#wikilink[$1]')
-      .replace(/^---$/gm, '#line(length: 100%)')
+  // Rewrite line by line, keeping a column map so Typst's error positions can
+  // be translated back to the note (see sourceMap.ts).
+  let lines: MappedLine[] = [
+    ...(hasLinks ? generatedLines(WIKILINK_DEF.trimEnd()) : []),
+    ...mapLines(body).map(line => {
+      let l = preprocessCitations(line, knownKeys)
+      l = replaceMapped(l, /\[\[([^\]]+)\]\]/g, (_m, inner: string) => `#wikilink[${inner}]`)
+      if (l.text === '---') l = replaceWholeLine(l, '#line(length: 100%)')
+      return l
+    }),
+  ]
 
-  if (cleanBody.includes('#cite(')) {
+  if (lines.some(l => l.text.includes('#cite('))) {
     const bibFiles = listBibFilenames()
     if (bibFiles.length > 0) {
       const styleName = citationStyle === 'numbered' ? 'ieee' : 'apa'
@@ -130,18 +136,23 @@ export async function compileNote(
       // first is honored (with its args replaced by the real ones) since Typst
       // rejects duplicates, and any extras are dropped. Otherwise append at the end.
       let injected = false
-      cleanBody = cleanBody.replace(/^\s*#bibliography\([^)]*\)\s*$/gm, () => {
-        if (injected) return ''
+      lines = lines.map(l => {
+        if (!/^\s*#bibliography\([^)]*\)\s*$/.test(l.text)) return l
+        if (injected) return replaceWholeLine(l, '')
         injected = true
-        return bibCall
+        return replaceWholeLine(l, bibCall)
       })
-      if (!injected) cleanBody += `\n${bibCall}\n`
+      if (!injected) lines.push(...generatedLines(bibCall), ...generatedLines(''))
     }
   }
 
-  if (mode === 'preview') cleanBody = rewriteImagesForPreview(cleanBody)
+  if (mode === 'preview') lines = lines.map(rewriteImagesForPreview)
 
-  return compileTypst(cleanBody)
+  const result = await compileTypst(joinMapped(lines))
+  if ('error' in result) {
+    result.diagnostics = parseDiagnostics(result.error, lines, p => /\.glyph-folio-[0-9a-f-]+\.typ$/i.test(p))
+  }
+  return result
 }
 
 export async function compileTypst(content: string): Promise<CompileResult> {

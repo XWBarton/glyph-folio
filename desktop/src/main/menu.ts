@@ -1,6 +1,14 @@
 import { Menu, BrowserWindow, app } from 'electron'
 
-export function buildMenu(win: BrowserWindow | null): void {
+export function buildMenu(win: BrowserWindow | null, opts: { onQuit: () => void }): void {
+  // Custom Quit so Cmd/Ctrl+Q can hide to the menu bar instead of stopping
+  // reminders. System quits (logout, dock Quit, tray Quit) bypass this.
+  const quitItem: Electron.MenuItemConstructorOptions = {
+    label: process.platform === 'darwin' ? `Quit ${app.name}` : 'Quit',
+    accelerator: 'CmdOrCtrl+Q',
+    click: () => opts.onQuit(),
+  }
+
   const template: Electron.MenuItemConstructorOptions[] = [
     {
       label: app.name,
@@ -13,7 +21,7 @@ export function buildMenu(win: BrowserWindow | null): void {
         { role: 'hideOthers' },
         { role: 'unhide' },
         { type: 'separator' },
-        { role: 'quit' }
+        quitItem
       ]
     },
     {
@@ -50,7 +58,7 @@ export function buildMenu(win: BrowserWindow | null): void {
         },
         ...(process.platform !== 'darwin' ? [
           { type: 'separator' as const },
-          { role: 'quit' as const }
+          quitItem
         ] : [])
       ]
     },
@@ -63,12 +71,24 @@ export function buildMenu(win: BrowserWindow | null): void {
         { role: 'cut' },
         { role: 'copy' },
         { role: 'paste' },
-        { role: 'selectAll' }
+        { role: 'selectAll' },
+        { type: 'separator' },
+        {
+          label: 'Dictionary…',
+          accelerator: 'CmdOrCtrl+Shift+D',
+          click: () => win?.webContents.send('menu:dictionary')
+        }
       ]
     },
     {
       label: 'View',
       submenu: [
+        {
+          label: 'Reminders',
+          accelerator: 'CmdOrCtrl+Alt+R',
+          click: () => win?.webContents.send('menu:reminders')
+        },
+        { type: 'separator' },
         {
           label: 'Rerender PDF',
           accelerator: 'CmdOrCtrl+R',

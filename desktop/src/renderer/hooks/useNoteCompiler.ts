@@ -1,8 +1,11 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
+import type { CompileDiagnostic } from '../../../preload/index'
 
 interface CompileState {
   pdfBytes: Uint8Array | null
   error: string | null
+  /** Parsed, note-relative errors from the last failed compile. */
+  diagnostics: CompileDiagnostic[]
   isCompiling: boolean
 }
 
@@ -10,6 +13,7 @@ export function useNoteCompiler(body: string) {
   const [state, setState] = useState<CompileState>({
     pdfBytes: null,
     error: null,
+    diagnostics: [],
     isCompiling: false
   })
 
@@ -32,9 +36,9 @@ export function useNoteCompiler(body: string) {
 
     isRunning.current = false
     if ('pdfBytes' in result) {
-      setState({ pdfBytes: result.pdfBytes, error: null, isCompiling: false })
+      setState({ pdfBytes: result.pdfBytes, error: null, diagnostics: [], isCompiling: false })
     } else {
-      setState(s => ({ ...s, error: result.error, isCompiling: false }))
+      setState(s => ({ ...s, error: result.error, diagnostics: result.diagnostics ?? [], isCompiling: false }))
     }
 
     // If body changed while we were compiling, run once more
@@ -46,7 +50,7 @@ export function useNoteCompiler(body: string) {
 
   useEffect(() => {
     if (!body.trim()) {
-      setState(s => ({ ...s, pdfBytes: null, error: null, isCompiling: false }))
+      setState(s => ({ ...s, pdfBytes: null, error: null, diagnostics: [], isCompiling: false }))
       return
     }
     if (debounceTimer.current) clearTimeout(debounceTimer.current)

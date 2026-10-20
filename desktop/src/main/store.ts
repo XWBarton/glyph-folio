@@ -12,6 +12,8 @@ export interface AppSettings {
   spellLangName: string
   authToken: string
   citationStyle: 'numbered' | 'author-date'
+  runInBackground: boolean   // keep running in the menu bar / tray so reminders fire
+  openAtLogin: boolean
 }
 
 const DEFAULTS: AppSettings = {
@@ -24,6 +26,8 @@ const DEFAULTS: AppSettings = {
   spellLangName: '',
   authToken: '',
   citationStyle: 'author-date',
+  runInBackground: true,
+  openAtLogin: false,
 }
 
 // Simple JSON-based store (no external dependency required)

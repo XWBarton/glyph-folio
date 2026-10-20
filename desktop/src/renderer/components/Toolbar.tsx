@@ -1,5 +1,6 @@
 import React from 'react'
 import type { AppSettings } from '../../../preload/index'
+import { BellIcon } from './RemindersPanel'
 
 type SyncMode = AppSettings['syncMode']
 
@@ -15,6 +16,9 @@ interface Props {
   hasActiveNote: boolean
   onSettings: () => void
   onOpenNotes: () => void
+  onReminders: () => void
+  /** Overdue + due-today reminders, shown as a badge on the bell. */
+  reminderBadge: number
   onShare: (kind: 'pdf' | 'docx' | 'source') => void
 }
 
@@ -28,7 +32,7 @@ function formatLastSaved(date: Date): string {
 
 export function Toolbar({
   noteTitle, isDirty, isCompiling, hasError, hasPdf,
-  lastSaved, syncMode, syncStatus, hasActiveNote, onSettings, onOpenNotes, onShare
+  lastSaved, syncMode, syncStatus, hasActiveNote, onSettings, onOpenNotes, onReminders, reminderBadge, onShare
 }: Props) {
   const [, forceUpdate] = React.useReducer(x => x + 1, 0)
   React.useEffect(() => {
@@ -128,6 +132,7 @@ export function Toolbar({
       }}>
         <StatusPill isCompiling={isCompiling} hasError={hasError} />
         <ShareDropdown onShare={onShare} hasPdf={hasPdf} hasActiveNote={hasActiveNote} />
+        <RemindersBtn onClick={onReminders} badge={reminderBadge} />
         <GearBtn onClick={onSettings} />
       </div>
     </div>
@@ -321,6 +326,43 @@ function DropdownItem({ label, disabled, style, onClick }: {
     >
       {label}
     </div>
+  )
+}
+
+function RemindersBtn({ onClick, badge }: { onClick: () => void; badge: number }) {
+  const [hovered, setHovered] = React.useState(false)
+  return (
+    <button
+      onClick={onClick}
+      title="Reminders (⌥⌘R)"
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      style={{
+        position: 'relative',
+        background: hovered ? 'rgba(255,255,255,0.8)' : 'rgba(255,255,255,0.5)',
+        border: '1px solid rgba(255,255,255,0.8)',
+        borderRadius: 'var(--radius-sm)',
+        width: 28, height: 28,
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        cursor: 'pointer',
+        backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)',
+        boxShadow: '0 1px 3px rgba(0,0,0,0.06)',
+        transition: 'background 0.12s',
+        color: 'var(--subtext)',
+      }}
+    >
+      <BellIcon size={13} />
+      {badge > 0 && (
+        <span style={{
+          position: 'absolute', top: -4, right: -4,
+          minWidth: 15, height: 15, padding: '0 4px', boxSizing: 'border-box',
+          borderRadius: 8, background: 'var(--red)', color: '#fff',
+          fontSize: 9, fontWeight: 700, lineHeight: '15px', textAlign: 'center',
+        }}>
+          {badge > 9 ? '9+' : badge}
+        </span>
+      )}
+    </button>
   )
 }
 

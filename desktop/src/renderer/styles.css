@@ -181,3 +181,12 @@ body::before {
 .pill-synced  { background: rgba(22,163,74,0.10);  border-color: rgba(22,163,74,0.20);  color: var(--green); }
 .pill-syncing { background: rgba(217,119,6,0.10);  border-color: rgba(217,119,6,0.20);  color: var(--yellow); }
 .pill-offline { background: rgba(220,38,38,0.10);  border-color: rgba(220,38,38,0.20);  color: var(--red); }
+
+/* Line flash when jumping to a compile error from the preview */
+@keyframes glyph-jump-flash {
+  from { background: rgba(220, 38, 38, 0.18); }
+  to   { background: transparent; }
+}
+.glyph-jump-line {
+  animation: glyph-jump-flash 1.2s ease-out forwards;
+}

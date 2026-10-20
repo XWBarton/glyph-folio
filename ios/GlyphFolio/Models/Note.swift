@@ -45,17 +45,67 @@ struct Note: Identifiable, Codable, Equatable {
         return []
     }
 
-    // Parse // @reminder: yyyy-MM-dd'T'HH:mm:ss (local time)
-    static func extractReminder(from body: String) -> Date? {
+    // Reminder lines store local wall-clock time with no zone, shared with desktop:
+    //   // @reminder: 2026-04-22T10:00:00
+    static let reminderFormatter: DateFormatter = {
         let df = DateFormatter()
         df.dateFormat = "yyyy-MM-dd'T'HH:mm:ss"
         df.locale = Locale(identifier: "en_US_POSIX")
+        return df
+    }()
+
+    private static let reminderFormatterNoSeconds: DateFormatter = {
+        let df = DateFormatter()
+        df.dateFormat = "yyyy-MM-dd'T'HH:mm"
+        df.locale = Locale(identifier: "en_US_POSIX")
+        return df
+    }()
+
+    // Parse // @reminder: yyyy-MM-dd'T'HH:mm[:ss] (local time)
+    static func extractReminder(from body: String) -> Date? {
         for line in body.components(separatedBy: "\n") {
-            guard let range = line.range(of: #"//\s*@reminder:\s*"#, options: .regularExpression) else { continue }
+            guard let range = line.range(of: #"^//\s*@reminder:\s*"#, options: .regularExpression) else { continue }
             let dateStr = String(line[range.upperBound...]).trimmingCharacters(in: .whitespaces)
-            if let date = df.date(from: dateStr) { return date }
+            if let date = reminderFormatter.date(from: dateStr) ?? reminderFormatterNoSeconds.date(from: dateStr) {
+                return date
+            }
         }
         return nil
+    }
+
+    /// Set, replace, or remove (nil) the `// @reminder:` line. New lines go
+    /// right after `// @tags:` (or at the top) — same rule as desktop.
+    static func applyingReminder(_ date: Date?, to body: String) -> String {
+        var lines = body.components(separatedBy: "\n")
+        let existing = lines.firstIndex { $0.range(of: #"^//\s*@reminder:"#, options: .regularExpression) != nil }
+        guard let date else {
+            if let idx = existing { lines.remove(at: idx) }
+            return lines.joined(separator: "\n")
+        }
+        let line = "// @reminder: \(reminderFormatter.string(from: date))"
+        if let idx = existing {
+            lines[idx] = line
+        } else if let tagsIdx = lines.firstIndex(where: { $0.hasPrefix("// @tags:") }) {
+            lines.insert(line, at: tagsIdx + 1)
+        } else {
+            lines.insert(line, at: 0)
+        }
+        return lines.joined(separator: "\n")
+    }
+
+    /// First line of real content, used as the notification preview.
+    var previewLine: String {
+        for raw in body.components(separatedBy: "\n") {
+            let line = raw.trimmingCharacters(in: .whitespaces)
+            if line.isEmpty || line.hasPrefix("//") || line.hasPrefix("#") { continue }
+            if line.range(of: #"^={1,6}\s"#, options: .regularExpression) != nil { continue }
+            let clean = line
+                .replacingOccurrences(of: #"^([-+*]|\d+\.)\s+"#, with: "", options: .regularExpression)
+                .replacingOccurrences(of: #"[*_`$]"#, with: "", options: .regularExpression)
+                .trimmingCharacters(in: .whitespaces)
+            if !clean.isEmpty { return clean.count > 120 ? String(clean.prefix(117)) + "…" : clean }
+        }
+        return ""
     }
 
     // Parse `[[link target]]` wikilinks

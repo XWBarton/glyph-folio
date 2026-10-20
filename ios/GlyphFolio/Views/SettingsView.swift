@@ -132,7 +132,7 @@ struct SettingsView: View {
                 } header: {
                     Text("Reminders")
                 } footer: {
-                    Text("Use /remind in a note to set one. Reminders you set on other devices sync when the app is opened.")
+                    Text("Use /remind in a note to set one, and the Reminders tab to see everything upcoming. Reminders set on other devices are scheduled here the next time Glyph Folio syncs.")
                 }
 
                 // ── Data ─────────────────────────────────────────────────────

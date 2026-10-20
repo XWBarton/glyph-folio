@@ -2,12 +2,32 @@ import SwiftUI
 import UserNotifications
 import BackgroundTasks
 
-// Show notifications even when the app is foregrounded
+/// Hands a tapped reminder's note id to the UI. The delegate can fire before
+/// any view exists (cold launch from a notification), so the id is held here
+/// until ContentView consumes it.
+@MainActor
+final class ReminderRouter: ObservableObject {
+    static let shared = ReminderRouter()
+    @Published var pendingNoteId: String?
+}
+
 private class NotificationDelegate: NSObject, UNUserNotificationCenterDelegate {
+    // Show notifications even when the app is foregrounded
     func userNotificationCenter(_ center: UNUserNotificationCenter,
                                 willPresent notification: UNNotification,
                                 withCompletionHandler handler: @escaping (UNNotificationPresentationOptions) -> Void) {
-        handler([.banner, .sound])
+        handler([.banner, .list, .sound])
+    }
+
+    // Tapping a reminder opens its note
+    func userNotificationCenter(_ center: UNUserNotificationCenter,
+                                didReceive response: UNNotificationResponse,
+                                withCompletionHandler handler: @escaping () -> Void) {
+        let noteId = response.notification.request.content.userInfo["noteId"] as? String
+        Task { @MainActor in
+            if let noteId { ReminderRouter.shared.pendingNoteId = noteId }
+            handler()
+        }
     }
 }
 
@@ -76,6 +96,7 @@ struct GlyphFolioApp: App {
         WindowGroup {
             ContentView()
                 .environmentObject(noteStore)
+                .environmentObject(ReminderRouter.shared)
                 .tint(Color(red: 0.145, green: 0.388, blue: 0.922)) // #2563eb
                 .onChange(of: scenePhase) { _, phase in
                     switch phase {
