@@ -1,7 +1,9 @@
 import { readdirSync, readFileSync, writeFileSync, unlinkSync, existsSync, mkdirSync, statSync, rmSync } from 'fs'
 import { join, basename, extname } from 'path'
 
-export const NOTES_DIR = join(process.cwd(), 'data', 'notes')
+export const NOTES_DIR = process.env['DATA_DIR']
+  ? join(process.env['DATA_DIR'], 'notes')
+  : join(process.cwd(), 'data', 'notes')
 
 export function ensureNotesDir(): void {
   mkdirSync(NOTES_DIR, { recursive: true })

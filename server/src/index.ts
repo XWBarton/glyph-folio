@@ -2,7 +2,7 @@ import express from 'express'
 import cors from 'cors'
 import { authMiddleware } from './auth'
 import {
-  listNotes, readNote, writeNote, deleteNote, ensureNotesDir,
+  listNotes, readNote, writeNote, deleteNote, ensureNotesDir, NOTES_DIR,
   listAttachments, writeAttachment, readAttachment, deleteAttachment
 } from './storage'
 import { compileTypst } from './compiler'
@@ -147,7 +147,7 @@ ${note.body}
 
 app.listen(PORT, () => {
   console.log(`Glyph Folio server running on http://localhost:${PORT}`)
-  console.log(`Notes stored in: ${process.cwd()}/data/notes/`)
+  console.log(`Notes stored in: ${NOTES_DIR}/`)
   if (!process.env['AUTH_TOKEN']) {
     console.log('Auth: disabled (set AUTH_TOKEN env var to enable)')
   }

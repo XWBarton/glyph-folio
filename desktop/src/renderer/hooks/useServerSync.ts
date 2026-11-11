@@ -14,9 +14,13 @@ function normalizeUrl(url: string): string {
   if (!url) return url
   // Upgrade http:// to https:// for non-local addresses (Cloudflare tunnels require HTTPS)
   if (url.startsWith('http://')) {
-    const host = url.slice(7).split('/')[0].split(':')[0]
+    const hostPort = url.slice(7).split('/')[0]
+    const host = hostPort.split(':')[0]
+    const hasExplicitPort = hostPort.includes(':')
     const isLocal = host === 'localhost' || host === '127.0.0.1' ||
-      /^192\.168\./.test(host) || /^10\./.test(host) || /^172\.(1[6-9]|2\d|3[01])\./.test(host)
+      /^192\.168\./.test(host) || /^10\./.test(host) || /^172\.(1[6-9]|2\d|3[01])\./.test(host) ||
+      !host.includes('.') || /\.(local|lan|home|internal)$/i.test(host) ||
+      hasExplicitPort
     if (!isLocal) return 'https://' + url.slice(7)
   }
   return url
