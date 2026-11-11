@@ -6,6 +6,7 @@ import { SettingsPanel } from './components/SettingsPanel'
 import { SearchModal } from './components/SearchModal'
 import { RemindersPanel } from './components/RemindersPanel'
 import { DictionaryModal } from './components/DictionaryModal'
+import { TabStrip } from './components/TabStrip'
 import { useNotes } from './hooks/useNotes'
 import { useNoteCompiler } from './hooks/useNoteCompiler'
 import { useTokenColors } from './hooks/useTokenColors'
@@ -13,18 +14,35 @@ import { useServerSync } from './hooks/useServerSync'
 import { useReminders } from './hooks/useReminders'
 import { reminderGroup, toLocalISOString } from './lib/reminderTime'
 import type { AppSettings } from '../../preload/index'
+import type { NoteMeta } from './hooks/useNotes'
+import { kbd, isMac } from './lib/kbd'
+
+// Extra windows are opened with ?window=secondary&note=<id>. Only the main
+// window remembers its tabs between launches.
+const WINDOW_PARAMS = new URLSearchParams(window.location.search)
+const IS_SECONDARY = WINDOW_PARAMS.get('window') === 'secondary'
+const TABS_KEY = 'folio-open-tabs'
+const ACTIVE_TAB_KEY = 'folio-active-tab'
+
+function loadStoredTabs(): string[] {
+  if (IS_SECONDARY) {
+    const id = WINDOW_PARAMS.get('note')
+    return id ? [id] : []
+  }
+  try { return JSON.parse(localStorage.getItem(TABS_KEY) ?? '[]') } catch { return [] }
+}
 
 export default function App() {
   // ── State ────────────────────────────────────────────────────────────────────
   const {
     notes, activeNote, isLoading, history, bibEntries,
-    selectNote, updateBody, createNote, importNote, deleteNote, refreshNotes, flushSave
+    selectNote, closeNote, updateBody, createNote, importNote, deleteNote, refreshNotes, flushSave
   } = useNotes()
 
   const [settings, setSettings] = useState<AppSettings>({
     syncMode: 'local', serverUrl: '', notesDir: '', fontSize: 14,
     spellAffPath: '', spellDicPath: '', spellLangName: '', authToken: '',
-    citationStyle: 'author-date', runInBackground: true, openAtLogin: false,
+    citationStyle: 'author-date', runInBackground: true, openAtLogin: false, showTabs: true,
   })
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [searchOpen, setSearchOpen] = useState(false)
@@ -41,11 +59,14 @@ export default function App() {
   // Load settings on mount — also restore custom spell dict if one was saved
   useEffect(() => {
     window.api.settingsGet().then(s => { setSettings(s); setSettingsLoaded(true) })
+    // Another window saved settings — pick them up here too
+    const unsub = window.api.onSettingsChanged(setSettings)
     window.api.spellLoadDict().then(result => {
       if (result) {
         import('./lib/spellChecker').then(({ reinitChecker }) => reinitChecker(result.aff, result.dic))
       }
     })
+    return unsub
   }, [])
 
   // ── Token colors ─────────────────────────────────────────────────────────────
@@ -133,7 +154,7 @@ export default function App() {
   // Periodic background sync so reminders/notes set on other devices land
   // without waiting for a focus event. Skipped when the window is hidden.
   useEffect(() => {
-    if (!settingsLoaded || settings.syncMode !== 'server') return
+    if (!settingsLoaded || settings.syncMode !== 'server' || IS_SECONDARY) return
     const id = setInterval(() => {
       if (document.hidden) return
       syncAll().then(result => { if (result === 'synced') refreshNotes() })
@@ -246,6 +267,10 @@ export default function App() {
   }, [activeNote, flushSave])
 
   // ── Create/delete ─────────────────────────────────────────────────────────────
+  // Read by handleDelete, which is defined before the tab state below
+  const openTabsRef = useRef<string[]>([])
+  const showTabsRef = useRef(true)
+
   const handleCreate = useCallback(async () => {
     const note = await createNote()
     setSearchOpen(false)
@@ -255,10 +280,109 @@ export default function App() {
 
   const handleDelete = useCallback(async (filePath: string) => {
     const noteId = notes.find(n => n.filePath === filePath)?.id
+    const wasActive = activeNote?.filePath === filePath
+    // With tabs on, deleting the open note moves to a neighbouring tab
+    const tabIdx = noteId ? openTabsRef.current.indexOf(noteId) : -1
+    const neighbourId = tabIdx >= 0
+      ? (openTabsRef.current[tabIdx + 1] ?? openTabsRef.current[tabIdx - 1])
+      : undefined
     await deleteNote(filePath)
     if (noteId && settings.syncMode === 'server') await deleteNoteOnServer(noteId)
-    setSearchOpen(true) // reopen explorer so user can pick another note
-  }, [deleteNote, deleteNoteOnServer, notes, settings.syncMode])
+    const neighbour = neighbourId ? notes.find(n => n.id === neighbourId) : undefined
+    if (wasActive && showTabsRef.current && neighbour) selectNote(neighbour)
+    else if (wasActive) setSearchOpen(true) // reopen explorer so user can pick another note
+  }, [deleteNote, deleteNoteOnServer, notes, settings.syncMode, activeNote, selectNote])
+
+  // ── Tabs ──────────────────────────────────────────────────────────────────────
+  const showTabs = settings.showTabs ?? true
+  const [openTabs, setOpenTabs] = useState<string[]>(loadStoredTabs)
+  openTabsRef.current = openTabs
+  showTabsRef.current = showTabs
+
+  // Whatever note becomes active gets a tab (search, wiki links, reminders…)
+  useEffect(() => {
+    const id = activeNote?.id
+    if (id) setOpenTabs(prev => (prev.includes(id) ? prev : [...prev, id]))
+  }, [activeNote?.id])
+
+  // Drop tabs whose note was deleted (here, in another window, or by sync)
+  useEffect(() => {
+    if (isLoading) return
+    const ids = new Set(notes.map(n => n.id))
+    setOpenTabs(prev => (prev.every(id => ids.has(id)) ? prev : prev.filter(id => ids.has(id))))
+  }, [notes, isLoading])
+
+  useEffect(() => {
+    if (IS_SECONDARY) return
+    try {
+      localStorage.setItem(TABS_KEY, JSON.stringify(openTabs))
+      if (activeNote) localStorage.setItem(ACTIVE_TAB_KEY, activeNote.id)
+    } catch {}
+  }, [openTabs, activeNote?.id])
+
+  const tabNotes = useMemo(() => {
+    const byId = new Map(notes.map(n => [n.id, n]))
+    return openTabs.map(id => byId.get(id)).filter((n): n is NoteMeta => !!n)
+  }, [openTabs, notes])
+
+  const handleCloseTab = useCallback((id: string) => {
+    const idx = openTabs.indexOf(id)
+    const rest = openTabs.filter(t => t !== id)
+    setOpenTabs(rest)
+    if (activeNote?.id !== id) return
+    // Closing the active tab moves to its neighbour (prefer the one below)
+    const nextId = rest[Math.min(idx, rest.length - 1)]
+    const next = nextId ? notes.find(n => n.id === nextId) : undefined
+    if (next) selectNote(next)
+    else closeNote()
+  }, [openTabs, activeNote?.id, notes, selectNote, closeNote])
+
+  const handleCloseOtherTabs = useCallback((id: string) => {
+    setOpenTabs([id])
+    if (activeNote?.id !== id) {
+      const target = notes.find(n => n.id === id)
+      if (target) selectNote(target)
+    }
+  }, [activeNote?.id, notes, selectNote])
+
+  const handleReorderTab = useCallback((fromId: string, toIndex: number) => {
+    setOpenTabs(prev => {
+      const from = prev.indexOf(fromId)
+      if (from < 0) return prev
+      const next = prev.filter(t => t !== fromId)
+      next.splice(toIndex > from ? toIndex - 1 : toIndex, 0, fromId)
+      return next
+    })
+  }, [])
+
+  const handleOpenInWindow = useCallback(async (id: string) => {
+    if (activeNote?.id === id) await flushSave()
+    window.api.windowOpenNote(id)
+  }, [activeNote?.id, flushSave])
+
+  // ⌘W closes the active tab; with no tab to close it closes the window
+  const handleCloseTabOrWindow = useCallback(() => {
+    if (showTabs && activeNote) handleCloseTab(activeNote.id)
+    else window.api.windowClose()
+  }, [showTabs, activeNote, handleCloseTab])
+
+  // Ctrl+Tab / Ctrl+Shift+Tab and ⌘⇧] / ⌘⇧[ cycle through tabs. Capture phase
+  // so Monaco doesn't swallow them first.
+  useEffect(() => {
+    if (!showTabs) return
+    const handler = (e: KeyboardEvent) => {
+      let dir = 0
+      if (e.ctrlKey && !e.metaKey && e.key === 'Tab') dir = e.shiftKey ? -1 : 1
+      else if ((isMac ? e.metaKey : e.ctrlKey) && e.shiftKey && (e.code === 'BracketRight' || e.code === 'BracketLeft')) dir = e.code === 'BracketRight' ? 1 : -1
+      if (!dir || tabNotes.length < 2) return
+      e.preventDefault()
+      e.stopPropagation()
+      const idx = tabNotes.findIndex(n => n.id === activeNote?.id)
+      selectNote(tabNotes[(idx + dir + tabNotes.length) % tabNotes.length])
+    }
+    window.addEventListener('keydown', handler, true)
+    return () => window.removeEventListener('keydown', handler, true)
+  }, [showTabs, tabNotes, activeNote?.id, selectNote])
 
   // ── Share source ─────────────────────────────────────────────────────────────
   const handleShareSource = useCallback(async () => {
@@ -299,9 +423,10 @@ export default function App() {
       window.api.onMenuImport(() => { importNote() }),
       window.api.onMenuReminders(() => setRemindersOpen(v => !v)),
       window.api.onMenuDictionary(() => setDictionaryOpen(v => !v)),
+      window.api.onMenuCloseTab(handleCloseTabOrWindow),
     ]
     return () => unsubs.forEach(fn => fn())
-  }, [handleCreate, handleDelete, exportPdf, exportDocx, compile, activeNote, importNote])
+  }, [handleCreate, handleDelete, exportPdf, exportDocx, compile, activeNote, importNote, handleCloseTabOrWindow])
 
   // ── Cmd+K to open notes explorer, Cmd+1/2/3 for navigation history ──────────
   useEffect(() => {
@@ -325,10 +450,22 @@ export default function App() {
     return () => window.removeEventListener('keydown', handler)
   }, [history, notes, selectNote])
 
-  // Open explorer on load if no note is selected
+  // On load, reopen the note this window was opened for (extra windows) or the
+  // last active tab (main window, tabs on); otherwise show the explorer.
+  const restoredRef = useRef(false)
   useEffect(() => {
-    if (!isLoading && !activeNote) setSearchOpen(true)
-  }, [isLoading]) // eslint-disable-line react-hooks/exhaustive-deps
+    if (isLoading || !settingsLoaded || restoredRef.current) return
+    restoredRef.current = true
+    if (activeNote) return
+    let restoreId: string | null = null
+    if (IS_SECONDARY) restoreId = WINDOW_PARAMS.get('note')
+    else if (settings.showTabs ?? true) {
+      try { restoreId = localStorage.getItem(ACTIVE_TAB_KEY) } catch {}
+    }
+    const target = restoreId ? notes.find(n => n.id === restoreId) : undefined
+    if (target) selectNote(target)
+    else setSearchOpen(true)
+  }, [isLoading, settingsLoaded]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Save settings ─────────────────────────────────────────────────────────────
   const handleSaveSettings = useCallback(async (partial: Partial<AppSettings>) => {
@@ -384,10 +521,25 @@ export default function App() {
         reminderBadge={reminderBadge}
       />
 
-      <div ref={splitContainerRef} style={{
+      <div style={{
         flex: 1, display: 'flex', overflow: 'hidden',
         padding: '10px', gap: 0,
       }}>
+        {showTabs && (
+          <TabStrip
+            tabs={tabNotes}
+            activeId={activeNote?.id ?? null}
+            activeTitle={activeNote?.title ?? ''}
+            onSelect={selectNote}
+            onClose={handleCloseTab}
+            onReorder={handleReorderTab}
+            onOpenInWindow={handleOpenInWindow}
+            onCloseOthers={handleCloseOtherTabs}
+            onNew={handleCreate}
+          />
+        )}
+
+        <div ref={splitContainerRef} style={{ flex: 1, minWidth: 0, display: 'flex' }}>
         {/* Editor — hidden when splitPct === 0 (preview fullscreen) */}
         {splitPct > 0 && (
           <div style={{
@@ -398,7 +550,7 @@ export default function App() {
             border: '1px solid var(--glass-border)',
             boxShadow: 'var(--glass-shadow), inset 0 1px 0 rgba(255,255,255,0.95)',
           }}>
-            <ExpandBtn title={splitPct >= 100 ? 'Restore split' : 'Fullscreen editor'} onClick={() => setSplitPct(v => v >= 100 ? 50 : 100)} />
+            <ExpandBtn expanded={splitPct >= 100} title={splitPct >= 100 ? 'Restore split' : 'Fullscreen editor'} onClick={() => setSplitPct(v => v >= 100 ? 50 : 100)} />
             {activeNote ? (
               <NoteEditor
                 value={activeNote.body}
@@ -485,10 +637,11 @@ export default function App() {
             border: '1px solid var(--glass-border)',
             boxShadow: 'var(--glass-shadow), inset 0 1px 0 rgba(255,255,255,0.95)',
           }}>
-            <ExpandBtn title={splitPct <= 0 ? 'Restore split' : 'Fullscreen preview'} onClick={() => setSplitPct(v => v <= 0 ? 50 : 0)} />
+            <ExpandBtn expanded={splitPct <= 0} title={splitPct <= 0 ? 'Restore split' : 'Fullscreen preview'} onClick={() => setSplitPct(v => v <= 0 ? 50 : 0)} />
             <PreviewPane pdfBytes={pdfBytes} error={error} diagnostics={diagnostics} isCompiling={isCompiling} noteId={activeNote?.id} onJumpToError={handleJumpToError} />
           </div>
         )}
+        </div>
       </div>
 
       <SearchModal
@@ -574,7 +727,7 @@ function FontSizeControl({ fontSize, onChange }: { fontSize: number; onChange: (
   )
 }
 
-function ExpandBtn({ onClick, title }: { onClick: () => void; title: string }) {
+function ExpandBtn({ onClick, title, expanded }: { onClick: () => void; title: string; expanded: boolean }) {
   const [hovered, setHovered] = React.useState(false)
   return (
     <button
@@ -588,10 +741,26 @@ function ExpandBtn({ onClick, title }: { onClick: () => void; title: string }) {
         padding: 4, borderRadius: 4,
         opacity: hovered ? 1 : 0.5,
         color: 'var(--subtext)',
-        fontSize: 14, lineHeight: 1,
+        lineHeight: 0,
         transition: 'opacity 0.15s',
       }}
-    >⤢</button>
+    >
+      {/* Arrows point out to expand, in to restore the split */}
+      <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor"
+        strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+        {expanded ? (
+          <>
+            <path d="M14 2L9.5 6.5M9.5 3v3.5H13" />
+            <path d="M2 14l4.5-4.5M6.5 13V9.5H3" />
+          </>
+        ) : (
+          <>
+            <path d="M9.5 6.5L14 2M10.5 2H14v3.5" />
+            <path d="M6.5 9.5L2 14M5.5 14H2v-3.5" />
+          </>
+        )}
+      </svg>
+    </button>
   )
 }
 
@@ -621,7 +790,7 @@ function EmptyState({ onOpen, isLoading }: { onOpen: () => void; isLoading: bool
               padding: '6px 16px', fontSize: 12,
               color: 'var(--accent)', cursor: 'pointer',
             }}
-          >Browse Notes (⌘K)</button>
+          >{kbd('Browse Notes (⌘K)')}</button>
         </>
       )}
     </div>

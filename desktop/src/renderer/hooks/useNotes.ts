@@ -182,6 +182,18 @@ export function useNotes() {
     await window.api.notesWrite(active.filePath, active.body)
   }, [])
 
+  // ── Close the active note (last tab closed) ────────────────────────────────
+
+  const closeNote = useCallback(async () => {
+    const active = stateRef.current.activeNote
+    if (active && dirtyRef.current) {
+      dirtyRef.current = false
+      if (timerRef.current) clearTimeout(timerRef.current)
+      await window.api.notesWrite(active.filePath, active.body)
+    }
+    setState(s => ({ ...s, activeNote: null }))
+  }, [])
+
   return {
     notes: state.notes,
     activeNote: state.activeNote,
@@ -189,6 +201,7 @@ export function useNotes() {
     history,
     bibEntries,
     selectNote,
+    closeNote,
     updateBody,
     createNote,
     importNote,

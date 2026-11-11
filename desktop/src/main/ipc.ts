@@ -1,4 +1,4 @@
-import { ipcMain, dialog } from 'electron'
+import { ipcMain, dialog, BrowserWindow } from 'electron'
 import { getBase, setBase } from './syncBase'
 import { readFileSync, writeFileSync, existsSync, readdirSync } from 'fs'
 import { basename, join, dirname } from 'path'
@@ -14,6 +14,7 @@ import {
 import { getStore } from './store'
 import { net } from 'electron'
 import { updateReminderForNote, listReminders, testNotification } from './reminders'
+import { openNoteWindow, broadcast } from './window'
 
 /** Upload an attachment to the sync server (fire-and-forget; only runs in server mode). */
 async function uploadAttachmentToServer(noteId: string, filename: string, buf: Buffer): Promise<void> {
@@ -134,6 +135,18 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
     if (before.runInBackground !== after.runInBackground || before.openAtLogin !== after.openAtLogin) {
       hooks.onBackgroundSettingsChanged()
     }
+    // Keep other windows' copy of the settings current
+    broadcast('settings:changed', after)
+  })
+
+  // ── Windows ────────────────────────────────────────────────────────────────
+
+  ipcMain.handle('window:open-note', (_event, noteId?: string) => {
+    openNoteWindow(noteId)
+  })
+
+  ipcMain.handle('window:close', (event) => {
+    BrowserWindow.fromWebContents(event.sender)?.close()
   })
 
   // Scan node_modules for installed dictionary-* packages

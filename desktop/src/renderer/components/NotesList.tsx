@@ -1,6 +1,7 @@
 import React, { useState } from 'react'
 import type { NoteMeta, Note } from '../hooks/useNotes'
 import { renderTypstTitle } from '../lib/typstTitle'
+import { kbd } from '../lib/kbd'
 
 interface Props {
   notes: NoteMeta[]
@@ -74,7 +75,7 @@ export function NotesList({ notes, activeNote, activeId, onSelect, onCreate, onD
         <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
           <button
             onClick={onOpenSearch}
-            title="Search & explore (⌘K)"
+            title={kbd('Search & explore (⌘K)')}
             style={{
               background: 'rgba(0,0,0,0.04)',
               border: '1px solid rgba(0,0,0,0.08)',
@@ -90,7 +91,7 @@ export function NotesList({ notes, activeNote, activeId, onSelect, onCreate, onD
           </button>
           <button
             onClick={onCreate}
-            title="New Note (⌘N)"
+            title={kbd('New Note (⌘N)')}
             style={{
               background: 'rgba(37,99,235,0.12)',
               border: '1px solid rgba(37,99,235,0.2)',

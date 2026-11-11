@@ -14,6 +14,7 @@ export interface AppSettings {
   citationStyle: 'numbered' | 'author-date'
   runInBackground: boolean   // keep running in the menu bar / tray so reminders fire
   openAtLogin: boolean
+  showTabs: boolean          // compact tab strip down the left edge
 }
 
 const DEFAULTS: AppSettings = {
@@ -28,6 +29,7 @@ const DEFAULTS: AppSettings = {
   citationStyle: 'author-date',
   runInBackground: true,
   openAtLogin: false,
+  showTabs: true,
 }
 
 // Simple JSON-based store (no external dependency required)

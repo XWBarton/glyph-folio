@@ -20,6 +20,12 @@ import { useSpellCheck } from '../hooks/useSpellCheck'
 import type { NoteMeta } from '../hooks/useNotes'
 import type { CompileDiagnostic } from '../../../preload/index'
 
+// Cursor + scroll position per note, so switching notes (tabs) lands back where
+// you were. Module-level so it survives the editor remounting.
+const noteViewStates = new Map<string, editor.ICodeEditorViewState>()
+// Last focusTitleKey acted on — module-level so a remount doesn't re-run it
+let handledFocusTitleKey = 0
+
 self.MonacoEnvironment = { getWorker: () => new editorWorker() }
 loader.config({ monaco })
 
@@ -667,6 +673,8 @@ export function NoteEditor({
 
   const handleMount: OnMount = useCallback((ed) => {
     editorRef.current = ed
+    const savedView = noteViewStates.get(noteIdRef.current)
+    if (savedView) ed.restoreViewState(savedView)
     monaco.editor.setTheme('liquid-glass-light')
     ed.addCommand(monaco.KeyCode.F1, () => {})
     ed.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyF, () => openFindRef.current(false))
@@ -1030,10 +1038,23 @@ export function NoteEditor({
     applyCitationDecorationsRef.current()
   }, [bibEntries])
 
+  // Save the outgoing note's view state in the cleanup (passive cleanups run
+  // before the editor swaps models), then restore the incoming note's.
   useEffect(() => {
-    if (!focusTitleKey) return
+    const ed = editorRef.current
+    const saved = noteViewStates.get(noteId)
+    if (ed && saved) ed.restoreViewState(saved)
+    return () => {
+      const state = editorRef.current?.saveViewState()
+      if (state) noteViewStates.set(noteId, state)
+    }
+  }, [noteId])
+
+  useEffect(() => {
+    if (!focusTitleKey || focusTitleKey === handledFocusTitleKey) return
     const ed = editorRef.current
     if (!ed) return
+    handledFocusTitleKey = focusTitleKey
     setTimeout(() => {
       const model = ed.getModel()
       if (!model) { ed.focus(); return }

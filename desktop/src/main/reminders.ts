@@ -2,7 +2,7 @@ import { Notification, app, powerMonitor } from 'electron'
 import { join } from 'path'
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'fs'
 import { listNotes, readNote, extractTitle } from './notesManager'
-import { showMainWindow, sendToRenderer } from './window'
+import { showMainWindow, sendToRenderer, broadcast } from './window'
 
 // ── Model ─────────────────────────────────────────────────────────────────────
 // The note body is the single source of truth: a `// @reminder: <local ISO>`
@@ -134,7 +134,7 @@ export function updateReminderForNote(noteId: string, body: string | null): void
 
 function onIndexChanged(): void {
   rescheduleNext()
-  sendToRenderer('reminders:changed')
+  broadcast('reminders:changed')
   for (const l of listeners) l()
 }
 

@@ -1,6 +1,12 @@
 import React from 'react'
 import type { AppSettings } from '../../../preload/index'
 import { BellIcon } from './RemindersPanel'
+import { kbd, isMac } from '../lib/kbd'
+
+// Width reserved on the right for the native Windows min/max/close buttons
+// (titleBarOverlay). Linux uses a regular frame and needs none.
+const isWindows = navigator.userAgent.includes('Windows')
+const WIN_CONTROLS_W = 138
 
 type SyncMode = AppSettings['syncMode']
 
@@ -51,7 +57,7 @@ export function Toolbar({
       height: 'var(--toolbar-h)',
       display: 'flex',
       alignItems: 'center',
-      padding: '0 16px 0 0',
+      padding: `0 ${isWindows ? WIN_CONTROLS_W + 8 : 16}px 0 0`,
       WebkitAppRegion: 'drag' as React.CSSProperties['WebkitAppRegion'],
       flexShrink: 0,
       position: 'relative',
@@ -63,7 +69,7 @@ export function Toolbar({
       boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.9), 0 1px 0 rgba(0,0,0,0.04)'
     }}>
       {/* macOS traffic-light spacer — collapses in fullscreen */}
-      <div style={{ width: isFullscreen ? 16 : 82, flexShrink: 0, transition: 'width 0.2s' }} />
+      <div style={{ width: isMac && !isFullscreen ? 82 : 16, flexShrink: 0, transition: 'width 0.2s' }} />
 
       {/* Left: sync pill + save status */}
       <div style={{
@@ -196,7 +202,7 @@ function NotesBtn({ onClick }: { onClick: () => void }) {
   return (
     <button
       onClick={onClick}
-      title="Browse notes (⌘K)"
+      title={kbd('Browse notes (⌘K)')}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
       style={{
@@ -334,7 +340,7 @@ function RemindersBtn({ onClick, badge }: { onClick: () => void; badge: number }
   return (
     <button
       onClick={onClick}
-      title="Reminders (⌥⌘R)"
+      title={kbd('Reminders (⌥⌘R)')}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
       style={{

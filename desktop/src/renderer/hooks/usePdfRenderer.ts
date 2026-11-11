@@ -7,6 +7,10 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = workerUrl
 
 const WRAPPER_PAD_Y = 24 // top+bottom padding in `padding: 12px 24px` below
 
+// Preview scroll position per note, so switching notes (tabs) returns to where
+// you were. Module-level so it survives the preview pane remounting.
+const noteScrollTops = new Map<string, number>()
+
 export function usePdfRenderer(
   containerRef: React.RefObject<HTMLDivElement | null>,
   pdfBytes: Uint8Array | null,
@@ -15,21 +19,38 @@ export function usePdfRenderer(
   noteId?: string
 ) {
   const versionRef = useRef(0)
-  const lastNoteIdRef = useRef(noteId)
+  // Note whose PDF is currently on screen, and the bytes it was rendered from
+  const shownNoteIdRef = useRef<string | undefined>(undefined)
+  const shownPdfRef = useRef<Uint8Array | null>(null)
+
+  // Remember the scroll position of whichever note is on screen
+  useEffect(() => {
+    const container = containerRef.current
+    if (!container) return
+    const onScroll = () => {
+      const id = shownNoteIdRef.current
+      if (id) noteScrollTops.set(id, container.scrollTop)
+    }
+    container.addEventListener('scroll', onScroll, { passive: true })
+    return () => container.removeEventListener('scroll', onScroll)
+  }, [containerRef])
 
   useEffect(() => {
     if (!pdfBytes || !containerRef.current) return
 
+    const isSameNote = noteId === shownNoteIdRef.current
+    // Just switched notes but the new note hasn't compiled yet — these are
+    // still the previous note's bytes, so leave its preview up untouched.
+    if (!isSameNote && pdfBytes === shownPdfRef.current) return
+
     const version = ++versionRef.current
     const container = containerRef.current
 
-    // Reset scroll to the top when we've switched notes (the container is
-    // reused across notes), but preserve it across a same-note recompile —
-    // otherwise every keystroke would silently scroll the preview back to
-    // page 1.
-    const isSameNote = noteId !== undefined && noteId === lastNoteIdRef.current
-    lastNoteIdRef.current = noteId
-    const prevScrollTop = isSameNote ? container.scrollTop : 0
+    // Same-note recompile keeps the current scroll (otherwise every keystroke
+    // would jump back to page 1); a switch restores where that note was left.
+    const prevScrollTop = isSameNote
+      ? container.scrollTop
+      : (noteId !== undefined ? noteScrollTops.get(noteId) ?? 0 : 0)
     const viewClientHeight = container.clientHeight
 
     const run = async () => {
@@ -72,6 +93,8 @@ export function usePdfRenderer(
 
         container.innerHTML = ''
         container.appendChild(fragment)
+        shownNoteIdRef.current = noteId
+        shownPdfRef.current = pdfBytes
         container.scrollTop = prevScrollTop
 
         const renderPage = async (i: number) => {

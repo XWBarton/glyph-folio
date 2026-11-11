@@ -1,6 +1,13 @@
 import { Menu, BrowserWindow, app } from 'electron'
+import { getMainWindow } from './window'
 
-export function buildMenu(win: BrowserWindow | null, opts: { onQuit: () => void }): void {
+/** Menu commands act on whichever window is in front (there can be several). */
+function send(channel: string): void {
+  const win = BrowserWindow.getFocusedWindow() ?? getMainWindow()
+  win?.webContents.send(channel)
+}
+
+export function buildMenu(opts: { onQuit: () => void; onNewWindow: () => void }): void {
   // Custom Quit so Cmd/Ctrl+Q can hide to the menu bar instead of stopping
   // reminders. System quits (logout, dock Quit, tray Quit) bypass this.
   const quitItem: Electron.MenuItemConstructorOptions = {
@@ -9,7 +16,7 @@ export function buildMenu(win: BrowserWindow | null, opts: { onQuit: () => void 
     click: () => opts.onQuit(),
   }
 
-  const template: Electron.MenuItemConstructorOptions[] = [
+  const appMenu: Electron.MenuItemConstructorOptions[] = process.platform !== 'darwin' ? [] : [
     {
       label: app.name,
       submenu: [
@@ -23,38 +30,52 @@ export function buildMenu(win: BrowserWindow | null, opts: { onQuit: () => void 
         { type: 'separator' },
         quitItem
       ]
-    },
+    }
+  ]
+
+  const template: Electron.MenuItemConstructorOptions[] = [
+    ...appMenu,
     {
       label: 'Note',
       submenu: [
         {
           label: 'New Note',
           accelerator: 'CmdOrCtrl+N',
-          click: () => win?.webContents.send('menu:new')
+          click: () => send('menu:new')
+        },
+        {
+          label: 'New Window',
+          accelerator: 'CmdOrCtrl+Shift+N',
+          click: () => opts.onNewWindow()
+        },
+        {
+          label: 'Close Tab',
+          accelerator: 'CmdOrCtrl+W',
+          click: () => send('menu:close-tab')
         },
         {
           label: 'Delete Note',
-          click: () => win?.webContents.send('menu:delete')
+          click: () => send('menu:delete')
         },
         { type: 'separator' },
         {
           label: 'Export PDF',
           accelerator: 'CmdOrCtrl+Shift+E',
-          click: () => win?.webContents.send('menu:export-pdf')
+          click: () => send('menu:export-pdf')
         },
         {
           label: 'Export Word (.docx)',
-          click: () => win?.webContents.send('menu:export-docx')
+          click: () => send('menu:export-docx')
         },
         {
           label: 'Share Source…',
           accelerator: 'CmdOrCtrl+Shift+S',
-          click: () => win?.webContents.send('menu:share-source')
+          click: () => send('menu:share-source')
         },
         {
           label: 'Import…',
           accelerator: 'CmdOrCtrl+Shift+I',
-          click: () => win?.webContents.send('menu:import')
+          click: () => send('menu:import')
         },
         ...(process.platform !== 'darwin' ? [
           { type: 'separator' as const },
@@ -76,7 +97,7 @@ export function buildMenu(win: BrowserWindow | null, opts: { onQuit: () => void 
         {
           label: 'Dictionary…',
           accelerator: 'CmdOrCtrl+Shift+D',
-          click: () => win?.webContents.send('menu:dictionary')
+          click: () => send('menu:dictionary')
         }
       ]
     },
@@ -86,13 +107,13 @@ export function buildMenu(win: BrowserWindow | null, opts: { onQuit: () => void 
         {
           label: 'Reminders',
           accelerator: 'CmdOrCtrl+Alt+R',
-          click: () => win?.webContents.send('menu:reminders')
+          click: () => send('menu:reminders')
         },
         { type: 'separator' },
         {
           label: 'Rerender PDF',
           accelerator: 'CmdOrCtrl+R',
-          click: () => win?.webContents.send('menu:rerender')
+          click: () => send('menu:rerender')
         },
         { role: 'forceReload' },
         { role: 'toggleDevTools' },

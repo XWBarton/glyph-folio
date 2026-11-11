@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
 import type { AppSettings } from '../../../preload/index'
+import { kbd } from '../lib/kbd'
 
 interface Props {
   open: boolean
@@ -447,7 +448,7 @@ export function DictionaryModal({ open, onClose, words, onChangeWords, spellLang
           <SmallBtn onClick={() => fileRef.current?.click()}>Import…</SmallBtn>
           <SmallBtn onClick={exportWords} disabled={words.length === 0}>Export…</SmallBtn>
           <span style={{ flex: 1, fontSize: 10, color: 'var(--overlay)', textAlign: 'center' }}>
-            Click to select · ⌘-click for more · double-click to edit
+            {kbd('Click to select · ⌘-click for more · double-click to edit')}
           </span>
           {words.length > 0 && (confirmClear ? (
             <>

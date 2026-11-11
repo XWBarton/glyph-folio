@@ -6,7 +6,7 @@ import { startWatcher, restartWatcher, seedDefaultNotes, readNote } from './note
 import { startReminderChecker, rebuildReminderIndex, updateReminderForNote } from './reminders'
 import { getStore } from './store'
 import { createTray, destroyTray } from './tray'
-import { setMainWindow, registerWindowFactory, showMainWindow } from './window'
+import { setMainWindow, registerWindowFactory, registerNoteWindowFactory, showMainWindow, broadcast } from './window'
 
 let mainWindow: BrowserWindow | null = null
 // Set when the user really wants to quit (tray Quit, dock Quit, logout) so the
@@ -15,13 +15,14 @@ let isQuitting = false
 
 const runInBackground = (): boolean => getStore().get('runInBackground')
 
-function createWindow(options: { show?: boolean } = {}): BrowserWindow {
+function buildWindow(options: { show?: boolean; query?: Record<string, string>; bounds?: Partial<Electron.Rectangle> } = {}): BrowserWindow {
   const isMac = process.platform === 'darwin'
   const isLinux = process.platform === 'linux'
 
-  mainWindow = new BrowserWindow({
+  const win = new BrowserWindow({
     width: 1100,
     height: 720,
+    ...options.bounds,
     minWidth: 700,
     minHeight: 500,
     titleBarStyle: isMac ? 'hiddenInset' : (isLinux ? 'default' : 'hidden'),
@@ -34,6 +35,10 @@ function createWindow(options: { show?: boolean } = {}): BrowserWindow {
     ...(!isMac && {
       backgroundColor: '#f0f4ff'
     }),
+    // Windows: hidden title bar + native min/max/close drawn over the toolbar
+    ...(process.platform === 'win32' && {
+      titleBarOverlay: { color: '#f6f8ff', symbolColor: '#6b7280', height: 48 }
+    }),
     show: options.show ?? true,
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
@@ -43,16 +48,33 @@ function createWindow(options: { show?: boolean } = {}): BrowserWindow {
     }
   })
 
-  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+  win.webContents.setWindowOpenHandler(({ url }) => {
     if (url.startsWith('https:')) shell.openExternal(url)
     return { action: 'deny' }
   })
 
+  const query = options.query ?? {}
   if (process.env['ELECTRON_RENDERER_URL']) {
-    mainWindow.loadURL(process.env['ELECTRON_RENDERER_URL'])
+    const url = new URL(process.env['ELECTRON_RENDERER_URL'])
+    for (const [k, v] of Object.entries(query)) url.searchParams.set(k, v)
+    win.loadURL(url.toString())
   } else {
-    mainWindow.loadFile(join(__dirname, '../renderer/index.html'))
+    win.loadFile(join(__dirname, '../renderer/index.html'), { query })
   }
+
+  const sendFullscreen = (isFullscreen: boolean) => {
+    if (!win.isDestroyed() && !win.webContents.isDestroyed()) {
+      win.webContents.send('window:fullscreen', isFullscreen)
+    }
+  }
+  win.on('enter-full-screen', () => sendFullscreen(true))
+  win.on('leave-full-screen', () => sendFullscreen(false))
+
+  return win
+}
+
+function createWindow(options: { show?: boolean } = {}): BrowserWindow {
+  mainWindow = buildWindow({ show: options.show })
 
   // Hide rather than destroy, so the renderer (and its server sync) stays
   // alive in the background and reminders from other devices still arrive.
@@ -68,22 +90,33 @@ function createWindow(options: { show?: boolean } = {}): BrowserWindow {
     setMainWindow(null)
   })
 
-  const sendFullscreen = (isFullscreen: boolean) => {
-    if (mainWindow && !mainWindow.webContents.isDestroyed()) {
-      mainWindow.webContents.send('window:fullscreen', isFullscreen)
-    }
-  }
-  mainWindow.on('enter-full-screen', () => sendFullscreen(true))
-  mainWindow.on('leave-full-screen', () => sendFullscreen(false))
-
   setMainWindow(mainWindow)
-  buildMenu(mainWindow, { onQuit: requestQuit })
   return mainWindow
+}
+
+/** Extra window (File → New Window / tab "Open in New Window"). Closes for real. */
+function createNoteWindow(noteId?: string): BrowserWindow {
+  // Cascade from whichever window is in front so the new one doesn't sit exactly on top
+  const anchor = BrowserWindow.getFocusedWindow() ?? mainWindow
+  const bounds = anchor && !anchor.isDestroyed() && !anchor.isFullScreen()
+    ? (({ x, y, width, height }) => ({ x: x + 28, y: y + 28, width, height }))(anchor.getBounds())
+    : undefined
+  const query: Record<string, string> = { window: 'secondary' }
+  if (noteId) query.note = noteId
+  return buildWindow({ query, bounds })
+}
+
+/** Extra windows don't run in the background — close them when hiding to the tray. */
+function closeSecondaryWindows(): void {
+  for (const win of BrowserWindow.getAllWindows()) {
+    if (win !== mainWindow) win.close()
+  }
 }
 
 /** App-menu Quit / Cmd+Q: hide to the menu bar when running in background. */
 function requestQuit(): void {
   if (runInBackground()) {
+    closeSecondaryWindows()
     mainWindow?.hide()
     if (process.platform === 'darwin') app.hide()
   } else {
@@ -102,9 +135,7 @@ function handleNoteFileEvent(event: 'add' | 'change' | 'unlink', filePath: strin
     const noteId = basename(filePath, '.typ')
     updateReminderForNote(noteId, event === 'unlink' ? null : (readNote(filePath)?.body ?? null))
   }
-  if (mainWindow && !mainWindow.webContents.isDestroyed()) {
-    mainWindow.webContents.send('notes:changed', event, filePath)
-  }
+  broadcast('notes:changed', event, filePath)
 }
 
 function applyBackgroundSettings(): void {
@@ -166,6 +197,8 @@ app.whenReady().then(() => {
     onBackgroundSettingsChanged: applyBackgroundSettings,
   })
   registerWindowFactory(() => createWindow())
+  registerNoteWindowFactory(createNoteWindow)
+  buildMenu({ onQuit: requestQuit, onNewWindow: () => createNoteWindow() })
   createWindow({ show: !launchedHidden() })
   startReminderChecker()
   applyBackgroundSettings()

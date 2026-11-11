@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import type { NoteMeta } from '../hooks/useNotes'
 import { GraphView } from './GraphView'
 import { renderTypstTitle } from '../lib/typstTitle'
+import { kbd } from '../lib/kbd'
 
 interface SearchResult extends NoteMeta {
   excerpt: string
@@ -231,7 +232,7 @@ export function SearchModal({ open, notes, activeNoteId, onClose, onSelect, onCr
 
           <button
             onClick={handleCreate}
-            title="New note (⌘N)"
+            title={kbd('New note (⌘N)')}
             style={{
               display: 'flex', alignItems: 'center', gap: 5,
               background: 'rgba(37,99,235,0.10)',
@@ -269,7 +270,7 @@ export function SearchModal({ open, notes, activeNoteId, onClose, onSelect, onCr
                 }}>{l === 'links' ? 'Links' : 'Tags'}</button>
               ))}
               <span style={{ fontSize: 10, color: 'var(--overlay)', marginLeft: 'auto' }}>
-                Click node to open · ⌘+click in editor to navigate
+                {kbd('Click node to open · ⌘+click in editor to navigate')}
               </span>
             </div>
             <GraphView

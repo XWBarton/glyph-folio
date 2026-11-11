@@ -38,6 +38,7 @@ export interface AppSettings {
   citationStyle: 'numbered' | 'author-date'
   runInBackground: boolean
   openAtLogin: boolean
+  showTabs: boolean
 }
 
 export interface CompileDiagnostic {
@@ -96,6 +97,10 @@ export interface FolioAPI {
   onMenuReminders(cb: () => void): () => void
   onMenuDictionary(cb: () => void): () => void
   onFullscreenChange(cb: (isFullscreen: boolean) => void): () => void
+  onMenuCloseTab(cb: () => void): () => void
+  onSettingsChanged(cb: (settings: AppSettings) => void): () => void
+  windowOpenNote(noteId?: string): Promise<void>
+  windowClose(): Promise<void>
   syncGetBase(noteId: string): Promise<string | null>
   syncSetBase(noteId: string, body: string): Promise<void>
   spellListInstalled(): Promise<{ id: string; name: string; affPath: string; dicPath: string }[]>
@@ -205,6 +210,18 @@ const api: FolioAPI = {
     ipcRenderer.on('menu:reminders', handler)
     return () => ipcRenderer.off('menu:reminders', handler)
   },
+  onMenuCloseTab: (cb) => {
+    const handler = () => cb()
+    ipcRenderer.on('menu:close-tab', handler)
+    return () => ipcRenderer.off('menu:close-tab', handler)
+  },
+  onSettingsChanged: (cb) => {
+    const handler = (_: IpcRendererEvent, settings: AppSettings) => cb(settings)
+    ipcRenderer.on('settings:changed', handler)
+    return () => ipcRenderer.off('settings:changed', handler)
+  },
+  windowOpenNote: (noteId) => ipcRenderer.invoke('window:open-note', noteId),
+  windowClose: () => ipcRenderer.invoke('window:close'),
   onFullscreenChange: (cb) => {
     const handler = (_: IpcRendererEvent, isFullscreen: boolean) => cb(isFullscreen)
     ipcRenderer.on('window:fullscreen', handler)

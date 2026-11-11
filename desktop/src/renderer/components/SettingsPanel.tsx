@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import type { AppSettings } from '../../../preload/index'
 import { TOKEN_DEFS, DEFAULT_TOKEN_COLORS, type TokenColors } from '../lib/tokenColors'
+import { kbd, isMac } from '../lib/kbd'
 
 interface Props {
   open: boolean
@@ -188,6 +189,22 @@ export function SettingsPanel({
             )}
           </Card>
 
+          {/* ── Tabs & Windows ── */}
+          <Card label="Tabs & Windows">
+            <ToggleRow
+              label="Show tab strip"
+              hint={kbd('Compact list of open notes down the left edge. ⌃Tab or ⇧⌘] / ⇧⌘[ to switch, ⌘W to close.')}
+              checked={settings.showTabs ?? true}
+              onChange={v => onSave({ showTabs: v })}
+            />
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <GlassBtn onClick={() => window.api.windowOpenNote()}>Open new window</GlassBtn>
+              <span style={{ fontSize: 10, color: 'var(--overlay)', lineHeight: 1.35 }}>
+                {kbd('Also ⇧⌘N')}, or right-click a tab → Open in New Window
+              </span>
+            </div>
+          </Card>
+
           {/* ── Citations ── */}
           <Card label="Citations">
             <div style={{ display: 'flex', gap: 4 }}>
@@ -237,7 +254,7 @@ export function SettingsPanel({
               </span>
             </Row>
             <div style={{ marginTop: 8 }}>
-              <GlassBtn onClick={onOpenDictionary}>Open Dictionary… (⇧⌘D)</GlassBtn>
+              <GlassBtn onClick={onOpenDictionary}>{kbd('Open Dictionary… (⇧⌘D)')}</GlassBtn>
             </div>
           </Card>
 
@@ -245,14 +262,14 @@ export function SettingsPanel({
           <Card label="Reminders">
             <div style={{ fontSize: 11, color: 'var(--subtext)', marginBottom: 8, lineHeight: 1.4 }}>
               Use <code style={{ fontFamily: 'monospace' }}>/remind</code> in a note to schedule one, and
-              {' '}<b>⌥⌘R</b> or the bell to see everything upcoming.
+              {' '}<b>{kbd('⌥⌘R')}</b> or the bell to see everything upcoming.
               If banners don't appear, grant notification permission to
               {' '}<code style={{ fontFamily: 'monospace' }}>Glyph Folio</code> (or
               {' '}<code style={{ fontFamily: 'monospace' }}>Electron</code> in dev)
-              {' '}in System Settings.
+              {' '}in {isMac ? 'System Settings' : 'Settings → System → Notifications'}.
             </div>
             <ToggleRow
-              label={navigator.platform.startsWith('Mac') ? 'Keep running in menu bar' : 'Keep running in system tray'}
+              label={isMac ? 'Keep running in menu bar' : 'Keep running in system tray'}
               hint="Closing the window or quitting keeps Glyph Folio in the background so reminders still fire."
               checked={settings.runInBackground ?? true}
               onChange={v => onSave({ runInBackground: v })}
