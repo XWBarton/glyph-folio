@@ -36,7 +36,7 @@ export function SpellSuggestions({ popup, onReplace, onAddToDictionary, onClose 
         top: popup.y,
         width: popupW,
         zIndex: 200,
-        background: 'rgba(255,255,255,0.88)',
+        background: 'rgba(var(--panel-rgb),0.88)',
         backdropFilter: 'blur(28px) saturate(200%)',
         WebkitBackdropFilter: 'blur(28px) saturate(200%)',
         border: '1px solid rgba(255,255,255,0.9)',
@@ -52,7 +52,7 @@ export function SpellSuggestions({ popup, onReplace, onAddToDictionary, onClose 
         color: 'var(--overlay)',
         fontSize: 11,
         letterSpacing: '0.02em',
-        borderBottom: popup.suggestions.length > 0 ? '1px solid rgba(0,0,0,0.06)' : undefined,
+        borderBottom: popup.suggestions.length > 0 ? '1px solid rgba(var(--ink-rgb),0.06)' : undefined,
       }}>
         Unknown word
       </div>
@@ -65,7 +65,7 @@ export function SpellSuggestions({ popup, onReplace, onAddToDictionary, onClose 
               key={s}
               onMouseDown={(e) => { e.preventDefault(); onReplace(s) }}
               style={itemStyle}
-              onMouseEnter={e => (e.currentTarget.style.background = 'rgba(37,99,235,0.08)')}
+              onMouseEnter={e => (e.currentTarget.style.background = 'rgba(var(--accent-rgb),0.08)')}
               onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
             >
               {s}
@@ -81,13 +81,13 @@ export function SpellSuggestions({ popup, onReplace, onAddToDictionary, onClose 
       )}
 
       {/* Divider */}
-      <div style={{ height: 1, background: 'rgba(0,0,0,0.06)', margin: '2px 0' }} />
+      <div style={{ height: 1, background: 'rgba(var(--ink-rgb),0.06)', margin: '2px 0' }} />
 
       {/* Add to dictionary */}
       <button
         onMouseDown={(e) => { e.preventDefault(); onAddToDictionary() }}
         style={{ ...itemStyle, color: 'var(--accent)' }}
-        onMouseEnter={e => (e.currentTarget.style.background = 'rgba(37,99,235,0.08)')}
+        onMouseEnter={e => (e.currentTarget.style.background = 'rgba(var(--accent-rgb),0.08)')}
         onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
       >
         Add "{popup.word}" to dictionary

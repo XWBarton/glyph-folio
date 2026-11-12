@@ -7,6 +7,16 @@ function send(channel: string): void {
   win?.webContents.send(channel)
 }
 
+/**
+ * Windows' titleBarOverlay replaces the classic menu bar row entirely, so the
+ * app menu (Import, Export, etc.) has no persistent on-screen entry point —
+ * only the undiscoverable Alt-key fallback. The toolbar's menu button calls
+ * this to open it as a popup instead.
+ */
+export function popupMenu(win: BrowserWindow): void {
+  Menu.getApplicationMenu()?.popup({ window: win })
+}
+
 export function buildMenu(opts: { onQuit: () => void; onNewWindow: () => void }): void {
   // Custom Quit so Cmd/Ctrl+Q can hide to the menu bar instead of stopping
   // reminders. System quits (logout, dock Quit, tray Quit) bypass this.

@@ -5,6 +5,7 @@ import { basename, join, dirname } from 'path'
 import { execFileSync } from 'child_process'
 import { compileNote } from './compiler'
 import { compileDocx } from './docxExport'
+import { popupMenu } from './menu'
 import {
   listNotes, readNote, writeNote, upsertNote, deleteNote, createNote, exportNotePdf, exportNoteDocx, resolveNotesDir, searchNotes,
   listAttachments, readAttachmentBuffer, writeAttachmentBuffer, deleteAttachmentFile,
@@ -96,6 +97,11 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
 
   ipcMain.handle('notes:dir', async () => {
     return resolveNotesDir()
+  })
+
+  ipcMain.handle('menu:popup', (event) => {
+    const win = BrowserWindow.fromWebContents(event.sender)
+    if (win) popupMenu(win)
   })
 
   ipcMain.handle('notes:search', async (_event, query: string) => {

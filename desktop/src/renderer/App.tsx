@@ -546,7 +546,7 @@ export default function App() {
             width: splitPct >= 100 ? '100%' : `calc(${splitPct}% - 5px)`,
             display: 'flex', overflow: 'visible', position: 'relative',
             borderRadius: 'var(--radius)',
-            background: 'rgba(255,255,255,0.72)',
+            background: 'rgba(var(--panel-rgb),0.72)',
             border: '1px solid var(--glass-border)',
             boxShadow: 'var(--glass-shadow), inset 0 1px 0 rgba(255,255,255,0.95)',
           }}>
@@ -583,7 +583,7 @@ export default function App() {
                 style={{
                   position: 'absolute', bottom: 10, left: 10,
                   fontSize: 11, color: 'var(--subtext)',
-                  background: 'rgba(255,255,255,0.7)',
+                  background: 'rgba(var(--panel-rgb),0.7)',
                   backdropFilter: 'blur(12px)',
                   WebkitBackdropFilter: 'blur(12px)',
                   border: '1px solid rgba(255,255,255,0.8)',
@@ -620,7 +620,7 @@ export default function App() {
           >
             <div style={{
               width: 2, height: 48, borderRadius: 2,
-              background: 'rgba(255,255,255,0.7)',
+              background: 'rgba(var(--panel-rgb),0.7)',
               boxShadow: '0 1px 4px rgba(0,0,0,0.1)',
             }} />
           </div>
@@ -631,7 +631,7 @@ export default function App() {
           <div style={{
             flex: 1, display: 'flex', overflow: 'hidden', position: 'relative',
             borderRadius: 'var(--radius)',
-            background: 'rgba(255,255,255,0.45)',
+            background: 'rgba(var(--panel-rgb),0.45)',
             backdropFilter: 'blur(24px) saturate(180%)',
             WebkitBackdropFilter: 'blur(24px) saturate(180%)',
             border: '1px solid var(--glass-border)',
@@ -706,7 +706,7 @@ function FontSizeControl({ fontSize, onChange }: { fontSize: number; onChange: (
     <div style={{
       position: 'absolute', bottom: 10, right: 10,
       display: 'flex', alignItems: 'center', gap: 6,
-      background: 'rgba(255,255,255,0.7)',
+      background: 'rgba(var(--panel-rgb),0.7)',
       backdropFilter: 'blur(12px)',
       WebkitBackdropFilter: 'blur(12px)',
       border: '1px solid rgba(255,255,255,0.8)',
@@ -774,7 +774,7 @@ function EmptyState({ onOpen, isLoading }: { onOpen: () => void; isLoading: bool
       {isLoading ? (
         <div style={{
           width: 20, height: 20, borderRadius: '50%',
-          border: '2px solid rgba(37,99,235,0.15)',
+          border: '2px solid rgba(var(--accent-rgb),0.15)',
           borderTopColor: 'var(--accent)',
           animation: 'spin 0.7s linear infinite',
         }} />
@@ -784,8 +784,8 @@ function EmptyState({ onOpen, isLoading }: { onOpen: () => void; isLoading: bool
           <button
             onClick={onOpen}
             style={{
-              background: 'rgba(37,99,235,0.10)',
-              border: '1px solid rgba(37,99,235,0.2)',
+              background: 'rgba(var(--accent-rgb),0.10)',
+              border: '1px solid rgba(var(--accent-rgb),0.2)',
               borderRadius: 'var(--radius-sm)',
               padding: '6px 16px', fontSize: 12,
               color: 'var(--accent)', cursor: 'pointer',

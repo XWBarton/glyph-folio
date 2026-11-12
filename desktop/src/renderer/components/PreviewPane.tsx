@@ -180,7 +180,7 @@ function ErrorPanel({ error, diagnostics, onJump }: {
       left: '50%',
       transform: 'translateX(-50%)',
       width: 'min(560px, 88%)',
-      background: 'rgba(255,255,255,0.94)',
+      background: 'rgba(var(--panel-rgb),0.94)',
       backdropFilter: 'blur(16px)',
       WebkitBackdropFilter: 'blur(16px)',
       border: '1px solid rgba(220,38,38,0.25)',
@@ -270,7 +270,7 @@ function Spinner() {
       width: 20,
       height: 20,
       borderRadius: '50%',
-      border: '2px solid rgba(37,99,235,0.15)',
+      border: '2px solid rgba(var(--accent-rgb),0.15)',
       borderTopColor: 'var(--accent)',
       animation: 'spin 0.7s linear infinite'
     }} />

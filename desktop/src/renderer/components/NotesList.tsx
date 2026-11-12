@@ -15,7 +15,7 @@ interface Props {
 }
 
 const TAG_COLORS = [
-  { bg: 'rgba(37,99,235,0.10)',  text: 'rgba(37,99,235,0.85)',  border: 'rgba(37,99,235,0.18)' },
+  { bg: 'rgba(var(--accent-rgb),0.10)',  text: 'rgba(var(--accent-rgb),0.85)',  border: 'rgba(var(--accent-rgb),0.18)' },
   { bg: 'rgba(5,150,105,0.10)',  text: 'rgba(5,150,105,0.85)',  border: 'rgba(5,150,105,0.18)' },
   { bg: 'rgba(124,58,237,0.10)', text: 'rgba(124,58,237,0.85)', border: 'rgba(124,58,237,0.18)' },
   { bg: 'rgba(234,88,12,0.10)',  text: 'rgba(234,88,12,0.85)',  border: 'rgba(234,88,12,0.18)' },
@@ -77,8 +77,8 @@ export function NotesList({ notes, activeNote, activeId, onSelect, onCreate, onD
             onClick={onOpenSearch}
             title={kbd('Search & explore (⌘K)')}
             style={{
-              background: 'rgba(0,0,0,0.04)',
-              border: '1px solid rgba(0,0,0,0.08)',
+              background: 'rgba(var(--ink-rgb),0.04)',
+              border: '1px solid rgba(var(--ink-rgb),0.08)',
               borderRadius: 6, width: 22, height: 22,
               display: 'flex', alignItems: 'center', justifyContent: 'center',
               cursor: 'pointer', color: 'var(--subtext)',
@@ -93,8 +93,8 @@ export function NotesList({ notes, activeNote, activeId, onSelect, onCreate, onD
             onClick={onCreate}
             title={kbd('New Note (⌘N)')}
             style={{
-              background: 'rgba(37,99,235,0.12)',
-              border: '1px solid rgba(37,99,235,0.2)',
+              background: 'rgba(var(--accent-rgb),0.12)',
+              border: '1px solid rgba(var(--accent-rgb),0.2)',
               borderRadius: 6, width: 22, height: 22,
               display: 'flex', alignItems: 'center', justifyContent: 'center',
               cursor: 'pointer', fontSize: 15, color: 'var(--accent)', lineHeight: 1,
@@ -161,7 +161,7 @@ export function NotesList({ notes, activeNote, activeId, onSelect, onCreate, onD
                     <button
                       onClick={e => { e.stopPropagation(); setAddingTag(true) }}
                       style={{
-                        background: 'rgba(0,0,0,0.04)', border: '1px dashed rgba(0,0,0,0.15)',
+                        background: 'rgba(var(--ink-rgb),0.04)', border: '1px dashed rgba(var(--ink-rgb),0.15)',
                         borderRadius: 4, padding: '1px 5px', fontSize: 10,
                         color: 'var(--subtext)', cursor: 'pointer',
                       }}
@@ -181,8 +181,8 @@ export function NotesList({ notes, activeNote, activeId, onSelect, onCreate, onD
                       placeholder="tag name"
                       style={{
                         width: 64, fontSize: 10, padding: '1px 5px',
-                        border: '1px solid rgba(37,99,235,0.3)', borderRadius: 4,
-                        background: 'rgba(37,99,235,0.05)', color: 'var(--text)', outline: 'none',
+                        border: '1px solid rgba(var(--accent-rgb),0.3)', borderRadius: 4,
+                        background: 'rgba(var(--accent-rgb),0.05)', color: 'var(--text)', outline: 'none',
                       }}
                     />
                   )}
@@ -199,7 +199,7 @@ export function NotesList({ notes, activeNote, activeId, onSelect, onCreate, onD
           <div style={{ position: 'fixed', inset: 0, zIndex: 90 }} onClick={() => setContextMenu(null)} />
           <div style={{
             position: 'fixed', left: contextMenu.x, top: contextMenu.y, zIndex: 100,
-            background: 'rgba(255,255,255,0.92)',
+            background: 'rgba(var(--panel-rgb),0.92)',
             backdropFilter: 'blur(24px) saturate(180%)',
             WebkitBackdropFilter: 'blur(24px) saturate(180%)',
             border: '1px solid rgba(255,255,255,0.85)',

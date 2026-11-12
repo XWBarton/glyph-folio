@@ -20,7 +20,7 @@ interface Props {
 }
 
 const TAG_COLORS = [
-  { bg: 'rgba(37,99,235,0.10)',  text: 'rgba(37,99,235,0.85)',  border: 'rgba(37,99,235,0.18)' },
+  { bg: 'rgba(var(--accent-rgb),0.10)',  text: 'rgba(var(--accent-rgb),0.85)',  border: 'rgba(var(--accent-rgb),0.18)' },
   { bg: 'rgba(5,150,105,0.10)',  text: 'rgba(5,150,105,0.85)',  border: 'rgba(5,150,105,0.18)' },
   { bg: 'rgba(124,58,237,0.10)', text: 'rgba(124,58,237,0.85)', border: 'rgba(124,58,237,0.18)' },
   { bg: 'rgba(234,88,12,0.10)',  text: 'rgba(234,88,12,0.85)',  border: 'rgba(234,88,12,0.18)' },
@@ -166,7 +166,7 @@ export function SearchModal({ open, notes, activeNoteId, onClose, onSelect, onCr
         style={{
           width: view === 'graph' ? 780 : 640,
           maxWidth: 'calc(100vw - 48px)',
-          background: 'rgba(250,251,255,0.92)',
+          background: 'rgba(var(--panel-rgb),0.92)',
           backdropFilter: 'blur(32px) saturate(200%)',
           WebkitBackdropFilter: 'blur(32px) saturate(200%)',
           border: '1px solid rgba(255,255,255,0.9)',
@@ -183,7 +183,7 @@ export function SearchModal({ open, notes, activeNoteId, onClose, onSelect, onCr
         <div style={{
           display: 'flex', alignItems: 'center', gap: 10,
           padding: '14px 18px',
-          borderBottom: '1px solid rgba(0,0,0,0.06)',
+          borderBottom: '1px solid rgba(var(--ink-rgb),0.06)',
           flexShrink: 0,
         }}>
           <svg width="16" height="16" viewBox="0 0 16 16" fill="none" style={{ flexShrink: 0, opacity: 0.4 }}>
@@ -206,7 +206,7 @@ export function SearchModal({ open, notes, activeNoteId, onClose, onSelect, onCr
           {isSearching && (
             <div style={{
               width: 12, height: 12, borderRadius: '50%',
-              border: '1.5px solid rgba(37,99,235,0.15)',
+              border: '1.5px solid rgba(var(--accent-rgb),0.15)',
               borderTopColor: 'var(--accent)',
               animation: 'spin 0.7s linear infinite',
               flexShrink: 0,
@@ -214,12 +214,12 @@ export function SearchModal({ open, notes, activeNoteId, onClose, onSelect, onCr
           )}
           {/* View toggle */}
           <div style={{
-            display: 'flex', background: 'rgba(0,0,0,0.05)',
+            display: 'flex', background: 'rgba(var(--ink-rgb),0.05)',
             borderRadius: 7, padding: 2, gap: 1, flexShrink: 0,
           }}>
             {(['list', 'graph'] as const).map(v => (
               <button key={v} onClick={() => setView(v)} style={{
-                background: view === v ? 'rgba(255,255,255,0.9)' : 'transparent',
+                background: view === v ? 'rgba(var(--panel-rgb),0.9)' : 'transparent',
                 border: 'none', borderRadius: 5, padding: '3px 10px',
                 fontSize: 11, color: view === v ? 'var(--text)' : 'var(--overlay)',
                 cursor: 'pointer', fontFamily: 'inherit',
@@ -235,8 +235,8 @@ export function SearchModal({ open, notes, activeNoteId, onClose, onSelect, onCr
             title={kbd('New note (⌘N)')}
             style={{
               display: 'flex', alignItems: 'center', gap: 5,
-              background: 'rgba(37,99,235,0.10)',
-              border: '1px solid rgba(37,99,235,0.2)',
+              background: 'rgba(var(--accent-rgb),0.10)',
+              border: '1px solid rgba(var(--accent-rgb),0.2)',
               borderRadius: 7, padding: '5px 10px',
               fontSize: 12, color: 'var(--accent)',
               cursor: 'pointer', fontFamily: 'inherit',
@@ -254,14 +254,14 @@ export function SearchModal({ open, notes, activeNoteId, onClose, onSelect, onCr
             <div style={{
               display: 'flex', alignItems: 'center', gap: 8,
               padding: '8px 18px',
-              borderBottom: '1px solid rgba(0,0,0,0.06)',
+              borderBottom: '1px solid rgba(var(--ink-rgb),0.06)',
               flexShrink: 0,
             }}>
               <span style={{ fontSize: 11, color: 'var(--overlay)', letterSpacing: '-0.01em' }}>Lens:</span>
               {(['links', 'tags'] as const).map(l => (
                 <button key={l} onClick={() => setGraphLens(l)} style={{
-                  background: graphLens === l ? 'rgba(37,99,235,0.10)' : 'transparent',
-                  border: `1px solid ${graphLens === l ? 'rgba(37,99,235,0.2)' : 'rgba(0,0,0,0.08)'}`,
+                  background: graphLens === l ? 'rgba(var(--accent-rgb),0.10)' : 'transparent',
+                  border: `1px solid ${graphLens === l ? 'rgba(var(--accent-rgb),0.2)' : 'rgba(var(--ink-rgb),0.08)'}`,
                   borderRadius: 6, padding: '3px 10px',
                   fontSize: 11, color: graphLens === l ? 'var(--accent)' : 'var(--subtext)',
                   cursor: 'pointer', fontFamily: 'inherit',
@@ -290,7 +290,7 @@ export function SearchModal({ open, notes, activeNoteId, onClose, onSelect, onCr
           <div style={{
             display: 'flex', flexWrap: 'wrap', gap: 6,
             padding: '10px 18px',
-            borderBottom: '1px solid rgba(0,0,0,0.06)',
+            borderBottom: '1px solid rgba(var(--ink-rgb),0.06)',
             flexShrink: 0,
           }}>
             {allTags.map(tag => {
@@ -303,9 +303,9 @@ export function SearchModal({ open, notes, activeNoteId, onClose, onSelect, onCr
                   onClick={() => toggleTag(tag)}
                   style={{
                     display: 'inline-flex', alignItems: 'center', gap: 4,
-                    background: isActive ? c.bg : 'rgba(0,0,0,0.04)',
+                    background: isActive ? c.bg : 'rgba(var(--ink-rgb),0.04)',
                     color: isActive ? c.text : 'var(--subtext)',
-                    border: `1px solid ${isActive ? c.border : 'rgba(0,0,0,0.08)'}`,
+                    border: `1px solid ${isActive ? c.border : 'rgba(var(--ink-rgb),0.08)'}`,
                     borderRadius: 6, padding: '4px 9px',
                     fontSize: 12, fontWeight: isActive ? 600 : 400,
                     cursor: 'pointer', fontFamily: 'inherit',
@@ -316,7 +316,7 @@ export function SearchModal({ open, notes, activeNoteId, onClose, onSelect, onCr
                   {tag}
                   <span style={{
                     fontSize: 10, opacity: 0.6,
-                    background: isActive ? 'rgba(0,0,0,0.08)' : 'rgba(0,0,0,0.06)',
+                    background: isActive ? 'rgba(var(--ink-rgb),0.08)' : 'rgba(var(--ink-rgb),0.06)',
                     borderRadius: 3, padding: '0 4px',
                   }}>{count}</span>
                 </button>
@@ -350,8 +350,8 @@ export function SearchModal({ open, notes, activeNoteId, onClose, onSelect, onCr
                 style={{
                   padding: '10px 18px',
                   cursor: 'pointer',
-                  borderBottom: '1px solid rgba(0,0,0,0.04)',
-                  background: isFocused ? 'rgba(37,99,235,0.07)' : 'transparent',
+                  borderBottom: '1px solid rgba(var(--ink-rgb),0.04)',
+                  background: isFocused ? 'rgba(var(--accent-rgb),0.07)' : 'transparent',
                   borderLeft: `3px solid ${isFocused ? 'var(--accent)' : 'transparent'}`,
                   transition: 'background 0.08s',
                   position: 'relative',
@@ -430,7 +430,7 @@ export function SearchModal({ open, notes, activeNoteId, onClose, onSelect, onCr
         {/* Footer hint */}
         <div style={{
           padding: '8px 18px',
-          borderTop: '1px solid rgba(0,0,0,0.06)',
+          borderTop: '1px solid rgba(var(--ink-rgb),0.06)',
           display: 'flex', gap: 14, alignItems: 'center',
           flexShrink: 0,
         }}>
@@ -441,7 +441,7 @@ export function SearchModal({ open, notes, activeNoteId, onClose, onSelect, onCr
           ].map(([key, label]) => (
             <span key={key} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 10, color: 'var(--overlay)' }}>
               <kbd style={{
-                background: 'rgba(0,0,0,0.06)', border: '1px solid rgba(0,0,0,0.10)',
+                background: 'rgba(var(--ink-rgb),0.06)', border: '1px solid rgba(var(--ink-rgb),0.10)',
                 borderRadius: 3, padding: '1px 5px', fontFamily: 'inherit', fontSize: 10,
               }}>{key}</kbd>
               {label}

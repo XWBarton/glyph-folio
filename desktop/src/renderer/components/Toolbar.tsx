@@ -62,7 +62,7 @@ export function Toolbar({
       flexShrink: 0,
       position: 'relative',
       zIndex: 50,
-      background: 'rgba(255,255,255,0.48)',
+      background: 'rgba(var(--panel-rgb),0.48)',
       backdropFilter: 'blur(24px) saturate(180%)',
       WebkitBackdropFilter: 'blur(24px) saturate(180%)',
       borderBottom: '1px solid rgba(255,255,255,0.6)',
@@ -71,7 +71,7 @@ export function Toolbar({
       {/* macOS traffic-light spacer — collapses in fullscreen */}
       <div style={{ width: isMac && !isFullscreen ? 82 : 16, flexShrink: 0, transition: 'width 0.2s' }} />
 
-      {/* Left: sync pill + save status */}
+      {/* Left: menu button (Windows only — titleBarOverlay removes the native menu bar) + sync pill + save status */}
       <div style={{
         display: 'flex',
         alignItems: 'center',
@@ -79,6 +79,7 @@ export function Toolbar({
         WebkitAppRegion: 'no-drag' as React.CSSProperties['WebkitAppRegion'],
         flexShrink: 0,
       }}>
+        {isWindows && <MenuBtn />}
         <SyncModePill mode={syncMode} status={syncStatus} />
         {!isDirty && lastSaved && (
           <span style={{
@@ -154,7 +155,7 @@ function SyncModePill({ mode, status }: { mode: string; status: string }) {
     status === 'syncing' ? { bg: 'rgba(217,119,6,0.12)',  border: 'rgba(217,119,6,0.30)',  color: 'var(--yellow)' }
     : status === 'offline' ? { bg: 'rgba(220,38,38,0.12)',  border: 'rgba(220,38,38,0.30)',  color: 'var(--red)'    }
     : status === 'synced'  ? { bg: 'rgba(22,163,74,0.10)',  border: 'rgba(22,163,74,0.25)',  color: 'var(--green)'  }
-    :                        { bg: 'rgba(255,255,255,0.45)', border: 'rgba(255,255,255,0.6)', color: 'var(--subtext)'}
+    :                        { bg: 'rgba(var(--panel-rgb),0.45)', border: 'rgba(255,255,255,0.6)', color: 'var(--subtext)'}
 
   return (
     <div style={{
@@ -207,7 +208,7 @@ function NotesBtn({ onClick }: { onClick: () => void }) {
       onMouseLeave={() => setHovered(false)}
       style={{
         display: 'flex', alignItems: 'center', gap: 6,
-        background: hovered ? 'rgba(255,255,255,0.8)' : 'rgba(255,255,255,0.5)',
+        background: hovered ? 'rgba(var(--panel-rgb),0.8)' : 'rgba(var(--panel-rgb),0.5)',
         border: '1px solid rgba(255,255,255,0.8)',
         borderRadius: 'var(--radius-sm)',
         padding: '4px 11px',
@@ -247,9 +248,9 @@ function ShareDropdown({ onShare, hasPdf, hasActiveNote }: {
 
   const disabled = !hasActiveNote
   const btnStyle: React.CSSProperties = {
-    background: disabled ? 'rgba(255,255,255,0.3)' : open ? 'rgba(37,99,235,0.18)' : 'rgba(37,99,235,0.10)',
+    background: disabled ? 'rgba(var(--panel-rgb),0.3)' : open ? 'rgba(var(--accent-rgb),0.18)' : 'rgba(var(--accent-rgb),0.10)',
     color: disabled ? 'var(--overlay)' : 'var(--accent)',
-    border: `1px solid ${disabled ? 'rgba(255,255,255,0.5)' : 'rgba(37,99,235,0.25)'}`,
+    border: `1px solid ${disabled ? 'rgba(255,255,255,0.5)' : 'rgba(var(--accent-rgb),0.25)'}`,
     borderRadius: 'var(--radius-sm)',
     padding: '4px 11px',
     fontSize: 12,
@@ -264,7 +265,7 @@ function ShareDropdown({ onShare, hasPdf, hasActiveNote }: {
     fontSize: 12,
     cursor: 'pointer',
     color: hovered ? 'var(--accent)' : 'var(--text)',
-    background: hovered ? 'rgba(37,99,235,0.07)' : 'transparent',
+    background: hovered ? 'rgba(var(--accent-rgb),0.07)' : 'transparent',
     borderRadius: 6,
     whiteSpace: 'nowrap' as const,
     transition: 'background 0.1s',
@@ -282,7 +283,7 @@ function ShareDropdown({ onShare, hasPdf, hasActiveNote }: {
       {open && (
         <div style={{
           position: 'absolute', right: 0, top: 'calc(100% + 6px)',
-          background: 'rgba(255,255,255,0.88)',
+          background: 'rgba(var(--panel-rgb),0.88)',
           backdropFilter: 'blur(28px) saturate(200%)',
           WebkitBackdropFilter: 'blur(28px) saturate(200%)',
           border: '1px solid rgba(255,255,255,0.8)',
@@ -345,7 +346,7 @@ function RemindersBtn({ onClick, badge }: { onClick: () => void; badge: number }
       onMouseLeave={() => setHovered(false)}
       style={{
         position: 'relative',
-        background: hovered ? 'rgba(255,255,255,0.8)' : 'rgba(255,255,255,0.5)',
+        background: hovered ? 'rgba(var(--panel-rgb),0.8)' : 'rgba(var(--panel-rgb),0.5)',
         border: '1px solid rgba(255,255,255,0.8)',
         borderRadius: 'var(--radius-sm)',
         width: 28, height: 28,
@@ -372,6 +373,34 @@ function RemindersBtn({ onClick, badge }: { onClick: () => void; badge: number }
   )
 }
 
+function MenuBtn() {
+  const [hovered, setHovered] = React.useState(false)
+  return (
+    <button
+      onClick={() => window.api.menuPopup()}
+      title="Menu"
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      style={{
+        background: hovered ? 'rgba(var(--panel-rgb),0.8)' : 'rgba(var(--panel-rgb),0.5)',
+        border: '1px solid rgba(255,255,255,0.8)',
+        borderRadius: 'var(--radius-sm)',
+        width: 28, height: 28,
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        cursor: 'pointer',
+        backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)',
+        boxShadow: '0 1px 3px rgba(0,0,0,0.06)',
+        transition: 'background 0.12s',
+        color: 'var(--subtext)',
+      }}
+    >
+      <svg width="13" height="13" viewBox="0 0 16 16" fill="none">
+        <path d="M2 4.5H14M2 8H14M2 11.5H14" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/>
+      </svg>
+    </button>
+  )
+}
+
 function GearBtn({ onClick }: { onClick: () => void }) {
   const [hovered, setHovered] = React.useState(false)
   return (
@@ -381,7 +410,7 @@ function GearBtn({ onClick }: { onClick: () => void }) {
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
       style={{
-        background: hovered ? 'rgba(255,255,255,0.8)' : 'rgba(255,255,255,0.5)',
+        background: hovered ? 'rgba(var(--panel-rgb),0.8)' : 'rgba(var(--panel-rgb),0.5)',
         border: '1px solid rgba(255,255,255,0.8)',
         borderRadius: 'var(--radius-sm)',
         width: 28, height: 28,

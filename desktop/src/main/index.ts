@@ -1,4 +1,4 @@
-import { app, BrowserWindow, shell, nativeImage } from 'electron'
+import { app, BrowserWindow, shell, nativeImage, nativeTheme } from 'electron'
 import { join, basename, extname } from 'path'
 import { registerIpcHandlers } from './ipc'
 import { buildMenu } from './menu'
@@ -14,6 +14,18 @@ let mainWindow: BrowserWindow | null = null
 let isQuitting = false
 
 const runInBackground = (): boolean => getStore().get('runInBackground')
+
+// Window chrome colors for Windows/Linux, where there's no vibrancy to adapt
+// automatically — kept in sync with styles.css's light/dark palettes so the
+// window doesn't flash the wrong shade before the renderer's CSS paints.
+function windowBackgroundColor(): string {
+  return nativeTheme.shouldUseDarkColors ? '#111218' : '#f0f4ff'
+}
+function titleBarOverlayOptions(): Electron.TitleBarOverlayOptions {
+  return nativeTheme.shouldUseDarkColors
+    ? { color: '#20222c', symbolColor: '#9399a8', height: 48 }
+    : { color: '#f6f8ff', symbolColor: '#6b7280', height: 48 }
+}
 
 function buildWindow(options: { show?: boolean; query?: Record<string, string>; bounds?: Partial<Electron.Rectangle> } = {}): BrowserWindow {
   const isMac = process.platform === 'darwin'
@@ -33,11 +45,11 @@ function buildWindow(options: { show?: boolean; query?: Record<string, string>; 
       backgroundColor: '#00000000'
     }),
     ...(!isMac && {
-      backgroundColor: '#f0f4ff'
+      backgroundColor: windowBackgroundColor()
     }),
     // Windows: hidden title bar + native min/max/close drawn over the toolbar
     ...(process.platform === 'win32' && {
-      titleBarOverlay: { color: '#f6f8ff', symbolColor: '#6b7280', height: 48 }
+      titleBarOverlay: titleBarOverlayOptions()
     }),
     show: options.show ?? true,
     webPreferences: {
@@ -202,6 +214,18 @@ app.whenReady().then(() => {
   createWindow({ show: !launchedHidden() })
   startReminderChecker()
   applyBackgroundSettings()
+
+  // Keep already-open Windows/Linux windows' native chrome in sync if the OS
+  // theme flips while the app is running (macOS vibrancy adapts on its own).
+  if (process.platform !== 'darwin') {
+    nativeTheme.on('updated', () => {
+      for (const win of BrowserWindow.getAllWindows()) {
+        if (win.isDestroyed()) continue
+        win.setBackgroundColor(windowBackgroundColor())
+        if (process.platform === 'win32') win.setTitleBarOverlay(titleBarOverlayOptions())
+      }
+    })
+  }
 
   // App-level file watcher (outlives the window): sends 'notes:changed' to the
   // renderer and keeps reminders in sync with external edits / iCloud.

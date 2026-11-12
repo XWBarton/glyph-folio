@@ -31,14 +31,14 @@ export function TagPalette({ open, x, y, tags, selectedIndex, onSelect, onClose 
         position: 'fixed', left: adjustedX, top: adjustedY,
         width: panelWidth, maxHeight: panelMaxHeight,
         zIndex: 100, display: 'flex', flexDirection: 'column',
-        background: '#ffffff',
-        border: '1px solid rgba(0,0,0,0.08)', borderRadius: 12,
+        background: 'var(--surface)',
+        border: '1px solid rgba(var(--ink-rgb),0.08)', borderRadius: 12,
         boxShadow: '0 8px 40px rgba(0,40,120,0.13), 0 2px 8px rgba(0,0,0,0.06), inset 0 1px 0 rgba(255,255,255,0.95)',
         overflow: 'hidden',
       }}>
         <div style={{ padding: '6px 10px 4px', fontSize: 10, fontWeight: 600,
           letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--overlay)',
-          borderBottom: '1px solid rgba(0,0,0,0.05)',
+          borderBottom: '1px solid rgba(var(--ink-rgb),0.05)',
         }}>
           Tags
         </div>
@@ -53,12 +53,12 @@ export function TagPalette({ open, x, y, tags, selectedIndex, onSelect, onClose 
                 style={{
                   display: 'flex', alignItems: 'center', gap: 8,
                   padding: '6px 12px', cursor: 'pointer',
-                  background: isSelected ? 'rgba(37,99,235,0.10)' : 'transparent',
+                  background: isSelected ? 'rgba(var(--accent-rgb),0.10)' : 'transparent',
                   borderRadius: isSelected ? 8 : 0,
                   margin: isSelected ? '0 4px' : '0',
                   transition: 'background 0.08s',
                 }}
-                onMouseEnter={e => { if (!isSelected) e.currentTarget.style.background = 'rgba(0,0,0,0.04)' }}
+                onMouseEnter={e => { if (!isSelected) e.currentTarget.style.background = 'rgba(var(--ink-rgb),0.04)' }}
                 onMouseLeave={e => { if (!isSelected) e.currentTarget.style.background = 'transparent' }}
               >
                 <span style={{ fontSize: 11, color: 'var(--subtext)', flexShrink: 0 }}>#</span>
@@ -72,12 +72,12 @@ export function TagPalette({ open, x, y, tags, selectedIndex, onSelect, onClose 
           })}
         </div>
         <div style={{
-          padding: '5px 12px', borderTop: '1px solid rgba(0,0,0,0.05)',
+          padding: '5px 12px', borderTop: '1px solid rgba(var(--ink-rgb),0.05)',
           display: 'flex', gap: 10, alignItems: 'center',
         }}>
           {[['↑↓', 'navigate'], ['↵', 'insert'], ['Esc', 'close']].map(([k, l]) => (
             <span key={k} style={{ display: 'flex', alignItems: 'center', gap: 3, fontSize: 10, color: 'var(--overlay)' }}>
-              <kbd style={{ background: 'rgba(0,0,0,0.06)', border: '1px solid rgba(0,0,0,0.08)', borderRadius: 4, padding: '1px 5px', fontFamily: 'system-ui', fontSize: 10 }}>{k}</kbd>
+              <kbd style={{ background: 'rgba(var(--ink-rgb),0.06)', border: '1px solid rgba(var(--ink-rgb),0.08)', borderRadius: 4, padding: '1px 5px', fontFamily: 'system-ui', fontSize: 10 }}>{k}</kbd>
               {l}
             </span>
           ))}

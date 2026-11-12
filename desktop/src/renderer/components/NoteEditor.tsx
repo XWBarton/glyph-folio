@@ -42,7 +42,7 @@ if (!document.getElementById('glyph-folio-suggest-overrides')) {
       border-radius: 10px !important;
       backdrop-filter: blur(28px) saturate(200%) !important;
       -webkit-backdrop-filter: blur(28px) saturate(200%) !important;
-      box-shadow: 0 8px 32px rgba(0,40,120,0.13), 0 2px 8px rgba(0,0,0,0.07),
+      box-shadow: 0 8px 32px rgba(0,40,120,0.13), 0 2px 8px rgba(var(--ink-rgb),0.07),
                   inset 0 1px 0 rgba(255,255,255,0.9) !important;
       overflow: hidden !important;
       max-width: 320px !important;
@@ -58,7 +58,7 @@ if (!document.getElementById('glyph-folio-wiki-badge-style')) {
   const style = document.createElement('style')
   style.id = 'glyph-folio-wiki-badge-style'
   style.textContent = `
-    .wiki-link-badge { background: rgba(37, 99, 235, 0.10); border-radius: 4px; }
+    .wiki-link-badge { background: rgba(var(--accent-rgb), 0.10); border-radius: 4px; }
     @media (prefers-color-scheme: dark) {
       .wiki-link-badge { background: rgba(96, 165, 250, 0.15); }
     }

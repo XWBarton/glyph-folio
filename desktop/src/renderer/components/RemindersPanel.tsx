@@ -62,7 +62,7 @@ export function RemindersPanel({ open, reminders, onClose, onOpenNote, onUpdate 
       <div style={{
         width: 520,
         maxWidth: 'calc(100vw - 48px)',
-        background: 'rgba(250,251,255,0.92)',
+        background: 'rgba(var(--panel-rgb),0.92)',
         backdropFilter: 'blur(32px) saturate(200%)',
         WebkitBackdropFilter: 'blur(32px) saturate(200%)',
         border: '1px solid rgba(255,255,255,0.9)',
@@ -75,7 +75,7 @@ export function RemindersPanel({ open, reminders, onClose, onOpenNote, onUpdate 
         <div style={{
           display: 'flex', alignItems: 'center', justifyContent: 'space-between',
           padding: '14px 18px',
-          borderBottom: '1px solid rgba(0,0,0,0.06)',
+          borderBottom: '1px solid rgba(var(--ink-rgb),0.06)',
           flexShrink: 0,
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -147,7 +147,7 @@ function ReminderRow({ reminder, overdue, onOpen, onEdit, onClear }: {
       style={{
         display: 'flex', alignItems: 'center', gap: 10,
         padding: '8px 10px', borderRadius: 8, cursor: 'pointer',
-        background: hovered ? 'rgba(37,99,235,0.07)' : 'transparent',
+        background: hovered ? 'rgba(var(--accent-rgb),0.07)' : 'transparent',
         transition: 'background 0.1s',
       }}
     >
@@ -176,7 +176,7 @@ function RowBtn({ label, onClick }: { label: string; onClick: () => void }) {
       onClick={e => { e.stopPropagation(); onClick() }}
       style={{
         padding: '3px 9px', fontSize: 11, borderRadius: 6, cursor: 'pointer',
-        border: '1px solid rgba(37,99,235,0.25)', background: 'rgba(255,255,255,0.7)',
+        border: '1px solid rgba(var(--accent-rgb),0.25)', background: 'rgba(var(--panel-rgb),0.7)',
         color: 'var(--accent)',
       }}
     >

@@ -87,8 +87,8 @@ export function EmojiPicker({ x, y, onInsert, onClose }: Props) {
           position: 'fixed', left: adjustedX, top: adjustedY,
           width: PANEL_W, height: PANEL_H, zIndex: 100,
           display: 'flex', flexDirection: 'column',
-          background: '#ffffff',
-          border: '1px solid rgba(0,0,0,0.08)',
+          background: 'var(--surface)',
+          border: '1px solid rgba(var(--ink-rgb),0.08)',
           borderRadius: 12,
           boxShadow: '0 8px 40px rgba(0,40,120,0.13), 0 2px 8px rgba(0,0,0,0.06)',
           overflow: 'hidden',
@@ -96,13 +96,13 @@ export function EmojiPicker({ x, y, onInsert, onClose }: Props) {
       >
         {/* Tabs */}
         <div style={{
-          display: 'flex', borderBottom: '1px solid rgba(0,0,0,0.06)',
+          display: 'flex', borderBottom: '1px solid rgba(var(--ink-rgb),0.06)',
           padding: '6px 8px 0', gap: 4, flexShrink: 0,
         }}>
           {(['emoji', 'emoticons'] as Tab[]).map(t => (
             <button key={t} onMouseDown={e => { e.preventDefault(); setTab(t) }} style={{
               border: 'none',
-              background: tab === t ? 'rgba(37,99,235,0.10)' : 'transparent',
+              background: tab === t ? 'rgba(var(--accent-rgb),0.10)' : 'transparent',
               color: tab === t ? 'var(--accent)' : 'var(--subtext)',
               borderRadius: '6px 6px 0 0', padding: '5px 12px',
               fontSize: 12, fontWeight: tab === t ? 600 : 400,
@@ -122,9 +122,9 @@ export function EmojiPicker({ x, y, onInsert, onClose }: Props) {
             onChange={e => setQuery(e.target.value)}
             placeholder={tab === 'emoji' ? 'Search emoji…' : 'Search emoticons…'}
             style={{
-              width: '100%', border: '1px solid rgba(0,0,0,0.10)',
+              width: '100%', border: '1px solid rgba(var(--ink-rgb),0.10)',
               borderRadius: 8, padding: '5px 10px', fontSize: 12,
-              outline: 'none', background: 'rgba(0,0,0,0.03)',
+              outline: 'none', background: 'rgba(var(--ink-rgb),0.03)',
               color: 'var(--text)', boxSizing: 'border-box',
             }}
           />
@@ -179,12 +179,12 @@ export function EmojiPicker({ x, y, onInsert, onClose }: Props) {
                     style={{
                       display: 'flex', alignItems: 'center', gap: 12,
                       width: '100%', border: 'none',
-                      background: isSelected ? 'rgba(37,99,235,0.10)' : 'transparent',
+                      background: isSelected ? 'rgba(var(--accent-rgb),0.10)' : 'transparent',
                       borderRadius: 7, padding: '6px 8px',
                       cursor: 'pointer', margin: '1px 0',
                       transition: 'background 0.08s', textAlign: 'left',
                     }}
-                    onMouseEnter={e => { if (!isSelected) e.currentTarget.style.background = 'rgba(0,0,0,0.04)' }}
+                    onMouseEnter={e => { if (!isSelected) e.currentTarget.style.background = 'rgba(var(--ink-rgb),0.04)' }}
                     onMouseLeave={e => { if (!isSelected) e.currentTarget.style.background = 'transparent' }}
                   >
                     <span style={{
@@ -209,7 +209,7 @@ export function EmojiPicker({ x, y, onInsert, onClose }: Props) {
 
         {/* Footer */}
         <div style={{
-          padding: '5px 12px', borderTop: '1px solid rgba(0,0,0,0.05)',
+          padding: '5px 12px', borderTop: '1px solid rgba(var(--ink-rgb),0.05)',
           display: 'flex', gap: 12, alignItems: 'center', flexShrink: 0,
         }}>
           <Hint keys={['↵']} label="insert" />
@@ -245,11 +245,11 @@ function EmojiGrid({
             title={name}
             onMouseDown={e => { e.preventDefault(); onPick(emoji) }}
             style={{
-              border: 'none', background: sel ? 'rgba(37,99,235,0.12)' : 'transparent',
+              border: 'none', background: sel ? 'rgba(var(--accent-rgb),0.12)' : 'transparent',
               borderRadius: 6, padding: '3px 0', fontSize: 20,
               cursor: 'pointer', lineHeight: 1.3, transition: 'background 0.08s',
             }}
-            onMouseEnter={e => { if (!sel) e.currentTarget.style.background = 'rgba(0,0,0,0.05)' }}
+            onMouseEnter={e => { if (!sel) e.currentTarget.style.background = 'rgba(var(--ink-rgb),0.05)' }}
             onMouseLeave={e => { if (!sel) e.currentTarget.style.background = 'transparent' }}
           >
             {emoji}
@@ -273,7 +273,7 @@ function Hint({ keys, label }: { keys: string[]; label: string }) {
     <span style={{ display: 'flex', alignItems: 'center', gap: 3, fontSize: 10, color: 'var(--overlay)' }}>
       {keys.map(k => (
         <kbd key={k} style={{
-          background: 'rgba(0,0,0,0.06)', border: '1px solid rgba(0,0,0,0.08)',
+          background: 'rgba(var(--ink-rgb),0.06)', border: '1px solid rgba(var(--ink-rgb),0.08)',
           borderRadius: 4, padding: '1px 4px', fontFamily: 'system-ui', fontSize: 10,
         }}>
           {k}

@@ -192,11 +192,12 @@ function parseBlocks(body: string): Block[] {
       continue
     }
 
-    // Heading
+    // Heading — strip a trailing <label> (e.g. `= Title <title>`), as figures/tables do.
     const headingMatch = /^(=+)\s+(.+)$/.exec(trimmed)
     if (headingMatch) {
       const level = Math.min(headingMatch[1].length, 6) as 1 | 2 | 3 | 4 | 5 | 6
-      blocks.push({ type: 'heading', level, text: headingMatch[2].trim() })
+      const text = headingMatch[2].replace(/\s*<[^>]+>\s*$/, '').trim()
+      blocks.push({ type: 'heading', level, text })
       i = lineEnd + 1
       continue
     }
@@ -227,8 +228,27 @@ function parseBlocks(body: string): Block[] {
       continue
     }
 
-    // Style directives with no visible output
-    if (/^#set\s+/.test(trimmed)) { i = lineEnd + 1; continue }
+    // Style directives with no visible output: #set name(...) and #show selector: set name(...),
+    // often chained several to a line (a template preamble). Consume each token in turn; only
+    // treat the line as style-only (and skip it) if nothing but such tokens remains.
+    if (/^#(set|show)\b/.test(trimmed)) {
+      let j = i
+      while (j < lineEnd) {
+        while (j < lineEnd && /\s/.test(body[j])) j++
+        if (j >= lineEnd) break
+        const rest = body.slice(j, lineEnd)
+        const setMatch = /^#set\s+[a-zA-Z][\w.]*\(/.exec(rest)
+        const showSetMatch = /^#show\s+(?:<[^>]+>|[a-zA-Z][\w.]*)\s*:\s*set\s+[a-zA-Z][\w.]*\(/.exec(rest)
+        const m = setMatch ?? showSetMatch
+        if (!m) break
+        const openParen = j + m[0].length - 1
+        j = findMatchingClose(body, openParen, '(', ')') + 1
+      }
+      if (j > i && /^\s*$/.test(body.slice(j, lineEnd))) {
+        i = lineEnd + 1
+        continue
+      }
+    }
 
     // Figure (image or table)
     if (/^#figure\(/.test(trimmed)) {

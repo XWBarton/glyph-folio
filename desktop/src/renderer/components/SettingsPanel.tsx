@@ -94,7 +94,7 @@ export function SettingsPanel({
         flexDirection: 'column',
         transform: open ? 'translateX(0)' : 'translateX(100%)',
         transition: 'transform 0.26s cubic-bezier(0.4, 0, 0.2, 1)',
-        background: 'rgba(240,244,255,0.72)',
+        background: 'rgba(var(--panel-rgb),0.72)',
         backdropFilter: 'blur(40px) saturate(200%)',
         WebkitBackdropFilter: 'blur(40px) saturate(200%)',
         borderLeft: '1px solid rgba(255,255,255,0.7)',
@@ -117,7 +117,7 @@ export function SettingsPanel({
           <button
             onClick={onClose}
             style={{
-              background: 'rgba(0,0,0,0.06)', border: '1px solid rgba(0,0,0,0.06)',
+              background: 'rgba(var(--ink-rgb),0.06)', border: '1px solid rgba(var(--ink-rgb),0.06)',
               borderRadius: 6, width: 22, height: 22,
               display: 'flex', alignItems: 'center', justifyContent: 'center',
               cursor: 'pointer', fontSize: 10, color: 'var(--subtext)',
@@ -138,8 +138,8 @@ export function SettingsPanel({
                   onClick={() => setSyncMode(mode)}
                   style={{
                     flex: 1,
-                    background: syncMode === mode ? 'rgba(37,99,235,0.12)' : 'rgba(255,255,255,0.5)',
-                    border: `1px solid ${syncMode === mode ? 'rgba(37,99,235,0.25)' : 'rgba(255,255,255,0.7)'}`,
+                    background: syncMode === mode ? 'rgba(var(--accent-rgb),0.12)' : 'rgba(var(--panel-rgb),0.5)',
+                    border: `1px solid ${syncMode === mode ? 'rgba(var(--accent-rgb),0.25)' : 'rgba(255,255,255,0.7)'}`,
                     borderRadius: 8,
                     padding: '5px 0',
                     fontSize: 11,
@@ -217,8 +217,8 @@ export function SettingsPanel({
                   onClick={() => { setCitationStyle(mode); onSave({ citationStyle: mode }) }}
                   style={{
                     flex: 1,
-                    background: citationStyle === mode ? 'rgba(37,99,235,0.12)' : 'rgba(255,255,255,0.5)',
-                    border: `1px solid ${citationStyle === mode ? 'rgba(37,99,235,0.25)' : 'rgba(255,255,255,0.7)'}`,
+                    background: citationStyle === mode ? 'rgba(var(--accent-rgb),0.12)' : 'rgba(var(--panel-rgb),0.5)',
+                    border: `1px solid ${citationStyle === mode ? 'rgba(var(--accent-rgb),0.25)' : 'rgba(255,255,255,0.7)'}`,
                     borderRadius: 8,
                     padding: '5px 0',
                     fontSize: 11,
@@ -337,15 +337,15 @@ export function SettingsPanel({
           display: 'flex', gap: 6, justifyContent: 'flex-end',
         }}>
           <button onClick={onClose} style={{
-            background: 'rgba(255,255,255,0.5)',
+            background: 'rgba(var(--panel-rgb),0.5)',
             border: '1px solid rgba(255,255,255,0.7)',
             borderRadius: 8, padding: '5px 14px',
             fontSize: 12, cursor: 'pointer',
             color: 'var(--subtext)', fontFamily: 'inherit',
           }}>Cancel</button>
           <button onClick={handleSave} style={{
-            background: 'rgba(37,99,235,0.12)',
-            border: '1px solid rgba(37,99,235,0.25)',
+            background: 'rgba(var(--accent-rgb),0.12)',
+            border: '1px solid rgba(var(--accent-rgb),0.25)',
             borderRadius: 8, padding: '5px 14px',
             fontSize: 12, cursor: 'pointer',
             color: 'var(--accent)', fontWeight: 600, fontFamily: 'inherit',
@@ -359,7 +359,7 @@ export function SettingsPanel({
 function Card({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div style={{
-      background: 'rgba(255,255,255,0.5)',
+      background: 'rgba(var(--panel-rgb),0.5)',
       border: '1px solid rgba(255,255,255,0.75)',
       borderRadius: 12,
       padding: '10px 12px',
@@ -397,7 +397,7 @@ function GlassInput({ value, onChange, placeholder, password, onEnter }: { value
       placeholder={placeholder}
       style={{
         width: '100%', boxSizing: 'border-box',
-        background: 'rgba(255,255,255,0.6)',
+        background: 'rgba(var(--panel-rgb),0.6)',
         border: '1px solid rgba(255,255,255,0.8)',
         borderRadius: 8, padding: '5px 9px',
         fontSize: 12, color: 'var(--text)',
@@ -457,7 +457,7 @@ function GlassBtn({ onClick, children }: { onClick: () => void; children: React.
     <button
       onClick={onClick}
       style={{
-        background: 'rgba(255,255,255,0.6)',
+        background: 'rgba(var(--panel-rgb),0.6)',
         border: '1px solid rgba(255,255,255,0.8)',
         borderRadius: 7, padding: '4px 10px',
         fontSize: 11, color: 'var(--subtext)',

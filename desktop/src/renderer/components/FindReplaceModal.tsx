@@ -7,13 +7,13 @@ if (!document.getElementById('glyph-find-styles')) {
   style.id = 'glyph-find-styles'
   style.textContent = `
     .glyph-find-match {
-      background: rgba(37,99,235,0.16);
+      background: rgba(var(--accent-rgb),0.16);
       border-radius: 2px;
     }
     .glyph-find-current {
-      background: rgba(37,99,235,0.38);
+      background: rgba(var(--accent-rgb),0.38);
       border-radius: 2px;
-      outline: 1.5px solid rgba(37,99,235,0.6);
+      outline: 1.5px solid rgba(var(--accent-rgb),0.6);
       outline-offset: -1px;
     }
   `
@@ -167,7 +167,7 @@ export function FindReplaceModal({
         right: 18,
         zIndex: 20,
         width: 330,
-        background: 'rgba(250,251,255,0.94)',
+        background: 'rgba(var(--panel-rgb),0.94)',
         backdropFilter: 'blur(28px) saturate(180%)',
         WebkitBackdropFilter: 'blur(28px) saturate(180%)',
         border: '1px solid rgba(255,255,255,0.85)',
@@ -274,8 +274,8 @@ function ToggleBtn({ active, onClick, title, children }: {
       onClick={onClick}
       title={title}
       style={{
-        background: active ? 'rgba(37,99,235,0.12)' : 'transparent',
-        border: `1px solid ${active ? 'rgba(37,99,235,0.3)' : 'rgba(0,0,0,0.08)'}`,
+        background: active ? 'rgba(var(--accent-rgb),0.12)' : 'transparent',
+        border: `1px solid ${active ? 'rgba(var(--accent-rgb),0.3)' : 'rgba(var(--ink-rgb),0.08)'}`,
         borderRadius: 5,
         padding: '2px 6px',
         fontSize: 10,
@@ -297,8 +297,8 @@ function inputStyle(error: boolean): React.CSSProperties {
   return {
     width: '100%',
     boxSizing: 'border-box',
-    background: 'rgba(255,255,255,0.75)',
-    border: `1px solid ${error ? 'rgba(220,38,38,0.45)' : 'rgba(0,0,0,0.10)'}`,
+    background: 'rgba(var(--panel-rgb),0.75)',
+    border: `1px solid ${error ? 'rgba(220,38,38,0.45)' : 'rgba(var(--ink-rgb),0.10)'}`,
     borderRadius: 7,
     padding: '5px 40px 5px 9px',
     fontSize: 12,
@@ -312,8 +312,8 @@ function inputStyle(error: boolean): React.CSSProperties {
 
 function iconBtnStyle(active: boolean, disabled = false): React.CSSProperties {
   return {
-    background: active ? 'rgba(37,99,235,0.10)' : 'transparent',
-    border: `1px solid ${active ? 'rgba(37,99,235,0.25)' : 'transparent'}`,
+    background: active ? 'rgba(var(--accent-rgb),0.10)' : 'transparent',
+    border: `1px solid ${active ? 'rgba(var(--accent-rgb),0.25)' : 'transparent'}`,
     borderRadius: 6,
     width: 26,
     height: 26,
@@ -332,8 +332,8 @@ function iconBtnStyle(active: boolean, disabled = false): React.CSSProperties {
 
 function replaceBtnStyle(disabled: boolean): React.CSSProperties {
   return {
-    background: disabled ? 'transparent' : 'rgba(37,99,235,0.08)',
-    border: `1px solid ${disabled ? 'rgba(0,0,0,0.06)' : 'rgba(37,99,235,0.2)'}`,
+    background: disabled ? 'transparent' : 'rgba(var(--accent-rgb),0.08)',
+    border: `1px solid ${disabled ? 'rgba(var(--ink-rgb),0.06)' : 'rgba(var(--accent-rgb),0.2)'}`,
     borderRadius: 6,
     padding: '3px 8px',
     fontSize: 11,

@@ -230,7 +230,7 @@ export function DictionaryModal({ open, onClose, words, onChangeWords, spellLang
     const term = candidates.length === 1 ? candidates[0] : ''
     const i = term ? word.toLowerCase().indexOf(term) : -1
     if (i < 0) return word
-    return <>{word.slice(0, i)}<mark style={{ background: 'rgba(37,99,235,0.18)', color: 'inherit', borderRadius: 2 }}>{word.slice(i, i + term.length)}</mark>{word.slice(i + term.length)}</>
+    return <>{word.slice(0, i)}<mark style={{ background: 'rgba(var(--accent-rgb),0.18)', color: 'inherit', borderRadius: 2 }}>{word.slice(i, i + term.length)}</mark>{word.slice(i + term.length)}</>
   }
 
   const chip = (word: string) => {
@@ -251,7 +251,7 @@ export function DictionaryModal({ open, onClose, words, onChangeWords, spellLang
           style={{
             fontSize: 12, padding: '3px 8px', borderRadius: 7, width: Math.max(80, editing.value.length * 8 + 20),
             border: '1px solid var(--accent)', outline: 'none', fontFamily: 'inherit', color: 'var(--text)',
-            background: '#fff',
+            background: 'var(--surface)',
           }}
         />
       )
@@ -293,7 +293,7 @@ export function DictionaryModal({ open, onClose, words, onChangeWords, spellLang
       />
       <div style={{
         width: 620, maxWidth: 'calc(100vw - 48px)', height: '76vh',
-        background: 'rgba(250,251,255,0.94)',
+        background: 'rgba(var(--panel-rgb),0.94)',
         backdropFilter: 'blur(32px) saturate(200%)', WebkitBackdropFilter: 'blur(32px) saturate(200%)',
         border: '1px solid rgba(255,255,255,0.9)', borderRadius: 14,
         boxShadow: '0 24px 64px rgba(0,20,100,0.18), 0 2px 8px rgba(0,0,0,0.08), inset 0 1px 0 rgba(255,255,255,0.95)',
@@ -320,7 +320,7 @@ export function DictionaryModal({ open, onClose, words, onChangeWords, spellLang
         <div style={{
           display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap',
           margin: '0 18px 10px', padding: '8px 10px',
-          background: 'rgba(255,255,255,0.6)', border: '1px solid rgba(0,0,0,0.06)', borderRadius: 10,
+          background: 'rgba(var(--panel-rgb),0.6)', border: '1px solid rgba(var(--ink-rgb),0.06)', borderRadius: 10,
         }}>
           <span style={{ fontSize: 11, color: 'var(--subtext)' }}>Language</span>
           <select
@@ -334,7 +334,7 @@ export function DictionaryModal({ open, onClose, words, onChangeWords, spellLang
             }}
             style={{
               fontSize: 12, padding: '3px 6px', borderRadius: 6, fontFamily: 'inherit',
-              border: '1px solid rgba(0,0,0,0.12)', background: '#fff', color: 'var(--text)',
+              border: '1px solid rgba(var(--ink-rgb),0.12)', background: 'var(--surface)', color: 'var(--text)',
             }}
           >
             <option value={BUILT_IN}>{BUILT_IN}</option>
@@ -355,7 +355,7 @@ export function DictionaryModal({ open, onClose, words, onChangeWords, spellLang
         <div style={{ padding: '0 18px 8px', flexShrink: 0 }}>
           <div style={{
             display: 'flex', alignItems: 'center', gap: 8,
-            border: '1px solid rgba(0,0,0,0.1)', borderRadius: 9, background: '#fff', padding: '6px 10px',
+            border: '1px solid rgba(var(--ink-rgb),0.1)', borderRadius: 9, background: 'var(--surface)', padding: '6px 10px',
           }}>
             <svg width="14" height="14" viewBox="0 0 16 16" fill="none" style={{ flexShrink: 0, opacity: 0.4 }}>
               <circle cx="6.5" cy="6.5" r="4.5" stroke="currentColor" strokeWidth="1.5"/>
@@ -389,7 +389,7 @@ export function DictionaryModal({ open, onClose, words, onChangeWords, spellLang
         {selected.size > 0 && (
           <div style={{
             display: 'flex', alignItems: 'center', gap: 8, margin: '0 18px 6px', padding: '5px 10px',
-            borderRadius: 8, background: 'rgba(37,99,235,0.08)', border: '1px solid rgba(37,99,235,0.18)',
+            borderRadius: 8, background: 'rgba(var(--accent-rgb),0.08)', border: '1px solid rgba(var(--accent-rgb),0.18)',
             fontSize: 11, color: 'var(--accent)', flexShrink: 0,
           }}>
             <span style={{ fontWeight: 600 }}>{selected.size} selected</span>
@@ -401,7 +401,7 @@ export function DictionaryModal({ open, onClose, words, onChangeWords, spellLang
         )}
 
         {/* Word list */}
-        <div style={{ flex: 1, display: 'flex', minHeight: 0, borderTop: '1px solid rgba(0,0,0,0.06)' }}>
+        <div style={{ flex: 1, display: 'flex', minHeight: 0, borderTop: '1px solid rgba(var(--ink-rgb),0.06)' }}>
           <div ref={listRef} style={{ flex: 1, overflowY: 'auto', padding: '10px 18px 14px' }}>
             {words.length === 0 ? (
               <div style={{ padding: '40px 16px', textAlign: 'center', color: 'var(--subtext)', fontSize: 12, lineHeight: 1.7 }}>
@@ -427,7 +427,7 @@ export function DictionaryModal({ open, onClose, words, onChangeWords, spellLang
           {showIndex && groups.length > 3 && (
             <div style={{
               display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 1,
-              padding: '8px 6px', borderLeft: '1px solid rgba(0,0,0,0.04)',
+              padding: '8px 6px', borderLeft: '1px solid rgba(var(--ink-rgb),0.04)',
             }}>
               {groups.map(([letter]) => (
                 <button key={letter}
@@ -443,7 +443,7 @@ export function DictionaryModal({ open, onClose, words, onChangeWords, spellLang
         {/* Footer */}
         <div style={{
           display: 'flex', alignItems: 'center', gap: 6, padding: '9px 18px',
-          borderTop: '1px solid rgba(0,0,0,0.06)', flexShrink: 0, background: 'rgba(255,255,255,0.4)',
+          borderTop: '1px solid rgba(var(--ink-rgb),0.06)', flexShrink: 0, background: 'rgba(var(--panel-rgb),0.4)',
         }}>
           <SmallBtn onClick={() => fileRef.current?.click()}>Import…</SmallBtn>
           <SmallBtn onClick={exportWords} disabled={words.length === 0}>Export…</SmallBtn>
@@ -503,8 +503,8 @@ function WordChip({ selected, onClick, onDoubleClick, onRemove, children }: {
         display: 'inline-flex', alignItems: 'center', gap: 4,
         padding: '3px 6px 3px 9px', borderRadius: 7, cursor: 'pointer', userSelect: 'none',
         fontSize: 12, color: selected ? '#fff' : 'var(--text)',
-        background: selected ? 'var(--accent)' : hovered ? 'rgba(37,99,235,0.08)' : 'rgba(255,255,255,0.75)',
-        border: `1px solid ${selected ? 'var(--accent)' : 'rgba(0,0,0,0.08)'}`,
+        background: selected ? 'var(--accent)' : hovered ? 'rgba(var(--accent-rgb),0.08)' : 'rgba(var(--panel-rgb),0.75)',
+        border: `1px solid ${selected ? 'var(--accent)' : 'rgba(var(--ink-rgb),0.08)'}`,
         transition: 'background 0.08s',
       }}
     >
@@ -530,8 +530,8 @@ function SmallBtn({ onClick, children, danger, disabled }: {
       onClick={onClick}
       disabled={disabled}
       style={{
-        background: danger ? 'rgba(220,38,38,0.10)' : 'rgba(255,255,255,0.7)',
-        border: `1px solid ${danger ? 'rgba(220,38,38,0.3)' : 'rgba(0,0,0,0.1)'}`,
+        background: danger ? 'rgba(220,38,38,0.10)' : 'rgba(var(--panel-rgb),0.7)',
+        border: `1px solid ${danger ? 'rgba(220,38,38,0.3)' : 'rgba(var(--ink-rgb),0.1)'}`,
         color: danger ? 'var(--red)' : 'var(--subtext)',
         borderRadius: 6, padding: '3px 9px', fontSize: 11, fontFamily: 'inherit',
         cursor: disabled ? 'default' : 'pointer', opacity: disabled ? 0.45 : 1, whiteSpace: 'nowrap',

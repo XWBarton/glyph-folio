@@ -40,7 +40,7 @@ export function TabStrip({
       width: 36, flexShrink: 0, marginRight: 10,
       display: 'flex', flexDirection: 'column',
       borderRadius: 'var(--radius)',
-      background: 'rgba(255,255,255,0.45)',
+      background: 'rgba(var(--panel-rgb),0.45)',
       backdropFilter: 'blur(24px) saturate(180%)',
       WebkitBackdropFilter: 'blur(24px) saturate(180%)',
       border: '1px solid var(--glass-border)',
@@ -93,8 +93,8 @@ export function TabStrip({
                 fontSize: 10.5, letterSpacing: '-0.02em',
                 color: isActive ? 'var(--accent)' : 'var(--subtext)',
                 fontWeight: isActive ? 700 : 500,
-                background: isActive ? 'var(--accent-soft)' : isHover ? 'rgba(255,255,255,0.75)' : 'rgba(255,255,255,0.4)',
-                border: `1px solid ${isActive ? 'rgba(37,99,235,0.3)' : 'rgba(255,255,255,0.7)'}`,
+                background: isActive ? 'var(--accent-soft)' : isHover ? 'rgba(var(--panel-rgb),0.75)' : 'rgba(var(--panel-rgb),0.4)',
+                border: `1px solid ${isActive ? 'rgba(var(--accent-rgb),0.3)' : 'rgba(255,255,255,0.7)'}`,
                 opacity: dragId === note.id ? 0.4 : 1,
                 boxShadow: dropIndex === i && dragId ? '0 -3px 0 -1px var(--accent)'
                   : dropIndex === i + 1 && i === tabs.length - 1 && dragId ? '0 3px 0 -1px var(--accent)'
@@ -111,8 +111,8 @@ export function TabStrip({
                     position: 'absolute', top: -3, right: -3,
                     width: 12, height: 12, borderRadius: '50%',
                     display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    background: 'rgba(255,255,255,0.95)',
-                    border: '1px solid rgba(0,0,0,0.12)',
+                    background: 'rgba(var(--panel-rgb),0.95)',
+                    border: '1px solid rgba(var(--ink-rgb),0.12)',
                     boxShadow: '0 1px 2px rgba(0,0,0,0.1)',
                     cursor: 'pointer', color: 'var(--subtext)', fontSize: 7, lineHeight: 1,
                     padding: 0, fontFamily: 'inherit',
@@ -134,7 +134,7 @@ export function TabStrip({
           fontSize: 15, lineHeight: 1, color: 'var(--subtext)', cursor: 'pointer',
           fontFamily: 'inherit',
         }}
-        onMouseEnter={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.45)' }}
+        onMouseEnter={e => { e.currentTarget.style.background = 'rgba(var(--panel-rgb),0.45)' }}
         onMouseLeave={e => { e.currentTarget.style.background = 'transparent' }}
       >+</button>
 
@@ -144,7 +144,7 @@ export function TabStrip({
           <div style={{ position: 'fixed', inset: 0, zIndex: 90 }} onClick={() => setContextMenu(null)} onContextMenu={e => { e.preventDefault(); setContextMenu(null) }} />
           <div style={{
             position: 'fixed', left: contextMenu.x, top: contextMenu.y, zIndex: 100,
-            background: 'rgba(255,255,255,0.92)',
+            background: 'rgba(var(--panel-rgb),0.92)',
             backdropFilter: 'blur(24px) saturate(180%)',
             WebkitBackdropFilter: 'blur(24px) saturate(180%)',
             border: '1px solid rgba(255,255,255,0.85)',
@@ -172,7 +172,7 @@ function MenuItem({ label, onClick }: { label: string; onClick: () => void }) {
         borderRadius: 7, padding: '7px 10px', textAlign: 'left',
         fontSize: 12, color: 'var(--text)', cursor: 'pointer', fontFamily: 'inherit',
       }}
-      onMouseEnter={e => { e.currentTarget.style.background = 'rgba(37,99,235,0.08)' }}
+      onMouseEnter={e => { e.currentTarget.style.background = 'rgba(var(--accent-rgb),0.08)' }}
       onMouseLeave={e => { e.currentTarget.style.background = 'transparent' }}
     >{label}</button>
   )

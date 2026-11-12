@@ -70,6 +70,7 @@ export interface FolioAPI {
   notesExportPdf(pdfBytes: number[], suggestedName: string): Promise<{ success: boolean; error?: string }>
   notesExportDocx(filePath: string, suggestedName: string): Promise<{ success: boolean; error?: string }>
   notesDir(): Promise<string>
+  menuPopup(): Promise<void>
   notesSearch(query: string): Promise<SearchResult[]>
   notesRenameLinks(oldTitle: string, newTitle: string, excludeFilePath: string): Promise<string[]>
   bibList(): Promise<string[]>
@@ -124,6 +125,7 @@ const api: FolioAPI = {
   notesExportPdf: (pdfBytes, name) => ipcRenderer.invoke('notes:export-pdf', pdfBytes, name),
   notesExportDocx: (filePath, name) => ipcRenderer.invoke('notes:export-docx', filePath, name),
   notesDir: () => ipcRenderer.invoke('notes:dir'),
+  menuPopup: () => ipcRenderer.invoke('menu:popup'),
   notesSearch: (query) => ipcRenderer.invoke('notes:search', query),
   notesRenameLinks: (oldTitle, newTitle, excludeFilePath) => ipcRenderer.invoke('notes:rename-links', oldTitle, newTitle, excludeFilePath),
   bibList: () => ipcRenderer.invoke('bib:list'),

@@ -170,7 +170,8 @@ function draw(
   dpr: number,
   vp: Viewport,
   tagColors: Record<string, string>,
-  degrees: Map<string, number>
+  degrees: Map<string, number>,
+  isDark: boolean
 ) {
   const { width, height } = ctx.canvas
   ctx.clearRect(0, 0, width, height)
@@ -201,7 +202,7 @@ function draw(
     ctx.beginPath()
     ctx.moveTo(s.x, s.y)
     ctx.lineTo(t.x, t.y)
-    ctx.strokeStyle = isPath ? 'rgba(37,99,235,0.55)' : dimming ? 'rgba(107,114,128,0.05)' : 'rgba(107,114,128,0.16)'
+    ctx.strokeStyle = isPath ? (isDark ? 'rgba(59,130,246,0.55)' : 'rgba(37,99,235,0.55)') : dimming ? 'rgba(107,114,128,0.05)' : 'rgba(107,114,128,0.16)'
     ctx.lineWidth = (isPath ? 1.8 : 1) / dpr
     ctx.stroke()
   }
@@ -260,7 +261,9 @@ function draw(
     if (labelWorthy) {
       const fontSize = isTag ? 10 : 11
       ctx.font = `${isActive ? 600 : 400} ${fontSize / dpr}px system-ui, -apple-system, sans-serif`
-      ctx.fillStyle = isDimmed ? 'rgba(0,0,0,0.2)' : isActive ? '#1a1d2e' : '#4b5563'
+      ctx.fillStyle = isDimmed
+        ? (isDark ? 'rgba(255,255,255,0.25)' : 'rgba(0,0,0,0.2)')
+        : isActive ? (isDark ? '#e5e7eb' : '#1a1d2e') : (isDark ? '#9399a8' : '#4b5563')
       ctx.textAlign = 'center'
       const label = n.label.length > 20 ? n.label.slice(0, 18) + '…' : n.label
       ctx.fillText(label, n.x, n.y + r + 13 / dpr)
@@ -293,13 +296,24 @@ export function GraphView({ notes, lens, activeNoteId, onSelect }: Props) {
   const initialized = useRef(false)
   const stepsRef = useRef(0)
 
+  // Canvas drawing can't read CSS variables, so the dark/light flag is tracked
+  // in JS too (same pattern NoteEditor uses for the Monaco theme).
+  const isDarkRef = useRef(window.matchMedia('(prefers-color-scheme: dark)').matches)
+  useEffect(() => {
+    const mq = window.matchMedia('(prefers-color-scheme: dark)')
+    const handler = () => { isDarkRef.current = mq.matches; redraw() }
+    mq.addEventListener('change', handler)
+    return () => mq.removeEventListener('change', handler)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   const getCanvas = () => canvasRef.current
   const getDpr = () => window.devicePixelRatio || 1
 
   const redraw = useCallback(() => {
     const canvas = getCanvas(); if (!canvas) return
     const ctx = canvas.getContext('2d'); if (!ctx) return
-    draw(ctx, nodesRef.current, edgesRef.current, lensRef.current, hovered.current, activeRef.current, getDpr(), viewportRef.current, tagColorsRef.current, degreesRef.current)
+    draw(ctx, nodesRef.current, edgesRef.current, lensRef.current, hovered.current, activeRef.current, getDpr(), viewportRef.current, tagColorsRef.current, degreesRef.current, isDarkRef.current)
   }, [])
 
   const loop = useCallback(() => {
@@ -556,9 +570,9 @@ export function GraphView({ notes, lens, activeNoteId, onSelect }: Props) {
           onMouseDown={e => e.stopPropagation()}
           style={{
             position: 'fixed', left: contextMenu.x, top: contextMenu.y,
-            background: 'rgba(255,255,255,0.97)',
+            background: 'rgba(var(--panel-rgb), 0.97)',
             backdropFilter: 'blur(16px)',
-            border: '1px solid rgba(0,0,0,0.09)',
+            border: '1px solid var(--surface-border)',
             borderRadius: 10,
             padding: '10px 12px 12px',
             boxShadow: '0 8px 32px rgba(0,0,0,0.13)',
@@ -630,9 +644,9 @@ export function GraphView({ notes, lens, activeNoteId, onSelect }: Props) {
             position: 'absolute',
             left: px + rect.left < rect.right - 180 ? px + 14 : px - 170,
             top: Math.max(4, py - 16),
-            background: 'rgba(255,255,255,0.95)',
+            background: 'rgba(var(--panel-rgb), 0.95)',
             backdropFilter: 'blur(12px)',
-            border: '1px solid rgba(0,0,0,0.08)',
+            border: '1px solid var(--surface-border)',
             borderRadius: 8,
             padding: '5px 10px',
             fontSize: 12,
