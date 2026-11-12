@@ -1,0 +1,50 @@
+name: Build macOS dmg
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "desktop/**"
+      - ".github/workflows/build-mac.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: macos-latest
+    env:
+      CSC_IDENTITY_AUTO_DISCOVERY: false
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build macOS installer
+        working-directory: desktop
+        run: npm run dist -- --mac --x64 --arm64
+
+      - name: Upload installer artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: glyph-folio-mac
+          path: |
+            desktop/dist/*.dmg
+
+      - name: Publish rolling release
+        if: github.event_name == 'push'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release delete mac-latest --yes --cleanup-tag || true
+          gh release create mac-latest desktop/dist/*.dmg \
+            --title "Latest macOS build (main)" \
+            --notes "Automated macOS build from main @ ${{ github.sha }}. Unsigned — Gatekeeper will warn on first launch (right-click > Open)." \
+            --prerelease
