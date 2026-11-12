@@ -111,6 +111,8 @@ cd glyph-folio/android
 adb install -r app/build/outputs/apk/debug/app-debug.apk
 ```
 
+No SDK handy? The **Build Android APK** workflow (`.github/workflows/build-android.yml`) builds the APK on every push to `main` that touches `android/`, and can be run manually from the Actions tab. Download it from the workflow run's artifacts or the `android-latest` pre-release. To also get a signed release APK, add the repository secrets `ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS` and `ANDROID_KEY_PASSWORD`.
+
 v0.1 covers the core loop: notes list (search, swipe to delete with undo, pull to sync), Typst editor with syntax highlighting, slash commands (`/`), list continuation, bracket auto-close and `[[wiki link]]` picking, local mode, server sync with the same 3-way merge as desktop, and PDF preview (server mode). In **Settings**, switch to *Server* and enter your server URL and auth token. Plain `http://` works for LAN / Tailscale addresses.
 
 Tests: `./gradlew testDebugUnitTest`. Set `GLYPH_SERVER=http://127.0.0.1:3001` to also run the live sync test against a real server.
