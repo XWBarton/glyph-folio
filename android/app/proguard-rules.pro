@@ -1,0 +1,6 @@
+-keepattributes *Annotation*, InnerClasses, Signature
+-keep,includedescriptorclasses class com.glyph.folio.**$$serializer { *; }
+-keepclassmembers class com.glyph.folio.** { *** Companion; }
+-keepclasseswithmembers class com.glyph.folio.** { kotlinx.serialization.KSerializer serializer(...); }
+-dontwarn okhttp3.internal.platform.**
+-dontwarn org.conscrypt.**

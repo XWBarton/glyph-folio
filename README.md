@@ -2,7 +2,7 @@
 
 # Glyph Folio
 
-Personal Typst note-taking system. Write notes in Typst markup on your Desktop or iPhone, compile to PDF, and keep everything in sync through a self-hosted server or stay fully offline with local storage.
+Personal Typst note-taking system. Write notes in Typst markup on your Desktop, iPhone or Android phone, compile to PDF, and keep everything in sync through a self-hosted server or stay fully offline with local storage.
 
 ## Features
 
@@ -100,6 +100,20 @@ npm run dev
 Open `ios/GlyphFolio.xcodeproj` in Xcode and build to your device or simulator. In **Settings** inside the app, enter your server URL and auth token (if set).
 
 I'm going to try and get a developer account soon for Test Flight.
+
+### Android app (early, v0.1)
+
+A native Kotlin + Jetpack Compose (Material 3, dynamic colour) app lives in `android/`. Requirements: **JDK 17** and the Android SDK (API 35).
+
+```bash
+cd glyph-folio/android
+./gradlew assembleDebug          # APK at app/build/outputs/apk/debug/app-debug.apk
+adb install -r app/build/outputs/apk/debug/app-debug.apk
+```
+
+v0.1 covers the core loop: notes list (search, swipe to delete with undo, pull to sync), Typst editor with syntax highlighting, slash commands (`/`), list continuation, bracket auto-close and `[[wiki link]]` picking, local mode, server sync with the same 3-way merge as desktop, and PDF preview (server mode). In **Settings**, switch to *Server* and enter your server URL and auth token. Plain `http://` works for LAN / Tailscale addresses.
+
+Tests: `./gradlew testDebugUnitTest`. Set `GLYPH_SERVER=http://127.0.0.1:3001` to also run the live sync test against a real server.
 
 ## Keep running (PM2)
 
