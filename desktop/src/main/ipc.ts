@@ -1,5 +1,5 @@
 import { ipcMain, dialog, BrowserWindow } from 'electron'
-import { getBase, setBase } from './syncBase'
+import { getBase, setBase, clearBase } from './syncBase'
 import { readFileSync, writeFileSync, existsSync, readdirSync } from 'fs'
 import { basename, join, dirname } from 'path'
 import { execFileSync } from 'child_process'
@@ -9,12 +9,12 @@ import { popupMenu } from './menu'
 import {
   listNotes, readNote, writeNote, upsertNote, deleteNote, createNote, exportNotePdf, exportNoteDocx, resolveNotesDir, searchNotes,
   listAttachments, readAttachmentBuffer, writeAttachmentBuffer, deleteAttachmentFile,
-  pickAndSaveAttachment, saveFileAsAttachment, renameWikiLinks, importNote,
+  pickAndSaveAttachment, saveFileAsAttachment, renameWikiLinks, renameNoteToTitle, importNote,
   listBibFiles, applyReminderLine
 } from './notesManager'
 import { getStore } from './store'
 import { net } from 'electron'
-import { updateReminderForNote, listReminders, testNotification } from './reminders'
+import { updateReminderForNote, renameReminderNote, listReminders, testNotification } from './reminders'
 import { openNoteWindow, broadcast } from './window'
 
 /** Upload an attachment to the sync server (fire-and-forget; only runs in server mode). */
@@ -68,6 +68,22 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
 
   ipcMain.handle('sync:get-base', (_event, noteId: string) => getBase(noteId))
   ipcMain.handle('sync:set-base', (_event, noteId: string, body: string) => setBase(noteId, body))
+  ipcMain.handle('sync:clear-base', (_event, noteId: string) => clearBase(noteId))
+
+  // Rename the note's file to follow its title. The old id's sync base is
+  // dropped; the renderer re-uploads under the new id and deletes the old one.
+  ipcMain.handle('notes:rename-to-title', (_event, filePath: string) => {
+    try {
+      const result = renameNoteToTitle(filePath)
+      if (!result) return null
+      clearBase(result.oldId)
+      renameReminderNote(result.oldId, result.id, result.body)
+      return result
+    } catch (e) {
+      console.error('[GlyphFolio] Rename to title failed:', e)
+      return null
+    }
+  })
 
   ipcMain.handle('notes:delete', async (_event, filePath: string) => {
     const result = deleteNote(filePath)

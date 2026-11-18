@@ -25,7 +25,38 @@ interface State {
 
 const AUTO_SAVE_DELAY = 2000
 
-export function useNotes() {
+export interface NoteRename {
+  oldId: string
+  id: string
+  filePath: string
+  body: string
+}
+
+// Monaco keys its models by path. A note keeps the path it was first opened
+// under even after its file is renamed, so the editor keeps cursor and undo
+// history; a later note that reuses a freed id gets a fresh path.
+const modelPathById = new Map<string, string>()
+const claimedModelPaths = new Set<string>()
+
+export function editorModelPath(id: string): string {
+  let path = modelPathById.get(id)
+  if (path) return path
+  path = id
+  for (let n = 1; claimedModelPaths.has(path); n++) path = `${id}~${n}`
+  modelPathById.set(id, path)
+  claimedModelPaths.add(path)
+  return path
+}
+
+function moveModelPath(oldId: string, newId: string): void {
+  const path = editorModelPath(oldId)
+  modelPathById.delete(oldId)
+  modelPathById.set(newId, path)
+}
+
+export function useNotes(options: { onRenamed?: (rename: NoteRename) => void } = {}) {
+  const onRenamedRef = useRef(options.onRenamed)
+  onRenamedRef.current = options.onRenamed
   const [state, setState] = useState<State>({
     notes: [],
     activeNote: null,
@@ -81,6 +112,36 @@ export function useNotes() {
     })
   }, [refreshNotes, refreshBib])
 
+  // ── Save a note, then rename its file to follow the title ───────────────
+
+  const persistNote = useCallback(async (note: Note): Promise<NoteRename | null> => {
+    // Capture old title (from notes list, which still has the pre-edit title)
+    const oldTitle = stateRef.current.notes.find(n => n.filePath === note.filePath)?.title
+    await window.api.notesWrite(note.filePath, note.body)
+    // If title changed, rename [[Old Title]] → [[New Title]] in all other notes
+    if (oldTitle && note.title && oldTitle !== note.title) {
+      await window.api.notesRenameLinks(oldTitle, note.title, note.filePath)
+    }
+    const rename = await window.api.notesRenameToTitle(note.filePath)
+    if (!rename) return null
+
+    moveModelPath(rename.oldId, rename.id)
+    const fromAtt = `attachments/${rename.oldId}/`
+    const toAtt = `attachments/${rename.id}/`
+    const fresh = stateRef.current.activeNote
+    if (fresh?.filePath === note.filePath) {
+      // Patch synchronously so a save racing this one targets the new file
+      const updated = { ...fresh, id: rename.id, filePath: rename.filePath, body: fresh.body.split(fromAtt).join(toAtt) }
+      stateRef.current = { ...stateRef.current, activeNote: updated }
+    }
+    setState(s => s.activeNote?.filePath === note.filePath
+      ? { ...s, activeNote: { ...s.activeNote, id: rename.id, filePath: rename.filePath, body: s.activeNote.body.split(fromAtt).join(toAtt) } }
+      : s)
+    setHistory(prev => prev.map(id => (id === rename.oldId ? rename.id : id)))
+    onRenamedRef.current?.(rename)
+    return rename
+  }, [])
+
   // ── Auto-save active note 2s after last change ───────────────────────────
 
   const scheduleAutoSave = useCallback(() => {
@@ -89,38 +150,38 @@ export function useNotes() {
       const active = stateRef.current.activeNote
       if (!active || !dirtyRef.current) return
       dirtyRef.current = false
-      // Capture old title (from notes list, which still has the pre-edit title)
-      const oldTitle = stateRef.current.notes.find(n => n.filePath === active.filePath)?.title
-      await window.api.notesWrite(active.filePath, active.body)
-      // If title changed, rename [[Old Title]] → [[New Title]] in all other notes
-      if (oldTitle && active.title && oldTitle !== active.title) {
-        await window.api.notesRenameLinks(oldTitle, active.title, active.filePath)
-      }
+      await persistNote(active)
       // Refresh list so modifiedAt + title updates propagate
       const notes = await window.api.notesList()
       setState(s => ({ ...s, notes }))
     }, AUTO_SAVE_DELAY)
-  }, [])
+  }, [persistNote])
 
   // ── Select / load a note ────────────────────────────────────────────────────
 
   const selectNote = useCallback(async (meta: NoteMeta) => {
     // Flush pending save for current note before switching
-    const active = stateRef.current.activeNote
+    let active = stateRef.current.activeNote
     if (dirtyRef.current) {
       if (active) {
         dirtyRef.current = false
         if (timerRef.current) clearTimeout(timerRef.current)
-        await window.api.notesWrite(active.filePath, active.body)
+        const rename = await persistNote(active)
+        if (rename) {
+          active = { ...active, id: rename.id, filePath: rename.filePath }
+          const notes = await window.api.notesList()
+          setState(s => ({ ...s, notes }))
+        }
       }
     }
     // Push previous note to history (most recent first, cap at 10, skip if same)
     if (active && active.id !== meta.id) {
-      setHistory(prev => [active.id, ...prev.filter(id => id !== meta.id)].slice(0, 10))
+      const prevId = active.id
+      setHistory(prev => [prevId, ...prev.filter(id => id !== meta.id)].slice(0, 10))
     }
     const note = await window.api.notesRead(meta.filePath)
     if (note) setState(s => ({ ...s, activeNote: note }))
-  }, [])
+  }, [persistNote])
 
   // ── Update body (called on every editor change) ─────────────────────────────
 
@@ -189,10 +250,10 @@ export function useNotes() {
     if (active && dirtyRef.current) {
       dirtyRef.current = false
       if (timerRef.current) clearTimeout(timerRef.current)
-      await window.api.notesWrite(active.filePath, active.body)
+      await persistNote(active)
     }
     setState(s => ({ ...s, activeNote: null }))
-  }, [])
+  }, [persistNote])
 
   return {
     notes: state.notes,

@@ -1,7 +1,7 @@
 import { app, dialog, nativeImage } from 'electron'
 import {
   readdirSync, readFileSync, writeFileSync, unlinkSync,
-  existsSync, mkdirSync, statSync, rmSync, copyFileSync, utimesSync
+  existsSync, mkdirSync, statSync, rmSync, copyFileSync, utimesSync, renameSync
 } from 'fs'
 import { readdir, readFile, stat } from 'fs/promises'
 import { join, basename, extname } from 'path'
@@ -218,16 +218,63 @@ export function deleteNote(filePath: string): { success: boolean; error?: string
   }
 }
 
-export function createNote(title?: string): Note {
-  const dir = resolveNotesDir()
-  const date = new Date()
-  const dateStr = date.toISOString().slice(0, 10)
-  const slug = (title ?? 'note')
+function slugify(title: string): string {
+  return title
     .toLowerCase()
     .replace(/[^a-z0-9\s-]/g, '')
     .trim()
     .replace(/\s+/g, '-')
-    .slice(0, 40) || 'note'
+    .replace(/-+/g, '-')
+    .slice(0, 40)
+    .replace(/^-+|-+$/g, '') || 'note'
+}
+
+export interface RenameResult {
+  oldId: string
+  id: string
+  filePath: string
+  body: string
+}
+
+/**
+ * Rename a note's file so its name follows its title
+ * (`<date>-<title-slug>.typ`), keeping the original date prefix. Moves the
+ * attachments folder along with it and rewrites `attachments/<oldId>/` paths
+ * in the body. Returns null when the name already matches.
+ */
+export function renameNoteToTitle(filePath: string): RenameResult | null {
+  if (!existsSync(filePath)) return null
+  const dir = resolveNotesDir()
+  const oldId = basename(filePath, '.typ')
+  const body = readFileSync(filePath, 'utf8')
+  const title = extractTitle(body, oldId)
+  const datePrefix = oldId.match(/^(\d{4}-\d{2}-\d{2})-/)?.[1]
+  const base = datePrefix ? `${datePrefix}-${slugify(title)}` : slugify(title)
+
+  // Already named after this title (including a "-N" collision suffix)
+  if (new RegExp(`^${escapeRegex(base)}(-\\d+)?$`).test(oldId)) return null
+
+  let id = base
+  let counter = 1
+  while (existsSync(join(dir, `${id}.typ`)) || existsSync(join(dir, 'attachments', id))) {
+    id = `${base}-${counter++}`
+  }
+  const newPath = join(dir, `${id}.typ`)
+
+  const newBody = body.split(`attachments/${oldId}/`).join(`attachments/${id}/`)
+  const oldAttDir = join(dir, 'attachments', oldId)
+  if (existsSync(oldAttDir)) renameSync(oldAttDir, join(dir, 'attachments', id))
+  renameSync(filePath, newPath)
+  if (newBody !== body) writeFileSync(newPath, newBody, 'utf8')
+
+  return { oldId, id, filePath: newPath, body: newBody }
+}
+
+export function createNote(title?: string): Note {
+  const dir = resolveNotesDir()
+  const date = new Date()
+  const dateStr = date.toISOString().slice(0, 10)
+  const slug = slugify(title ?? 'note')
   let filename = `${dateStr}-${slug}.typ`
   let filePath = join(dir, filename)
 

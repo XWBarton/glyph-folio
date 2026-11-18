@@ -10,6 +10,19 @@ function arrayBufferToBase64(buf: ArrayBuffer): string {
 
 export type SyncStatus = 'synced' | 'syncing' | 'offline' | 'idle'
 
+// Note ids deleted (or renamed away) locally whose server DELETE hasn't gone
+// through yet. Pushes for these ids are dropped, and the deletes are retried
+// at the start of each sync, so the server copy can't come back.
+const PENDING_DELETES_KEY = 'folio-pending-server-deletes'
+
+function loadPendingDeletes(): Set<string> {
+  try { return new Set(JSON.parse(localStorage.getItem(PENDING_DELETES_KEY) ?? '[]')) } catch { return new Set() }
+}
+
+function savePendingDeletes(ids: Set<string>): void {
+  try { localStorage.setItem(PENDING_DELETES_KEY, JSON.stringify([...ids])) } catch {}
+}
+
 function normalizeUrl(url: string): string {
   if (!url) return url
   // Upgrade http:// to https:// for non-local addresses (Cloudflare tunnels require HTTPS)
@@ -40,6 +53,7 @@ export function useServerSync(serverUrl: string, enabled: boolean, authToken?: s
 
   const pushNote = useCallback(async (id: string, body: string) => {
     if (!enabled || !serverUrl) return
+    if (loadPendingDeletes().has(id)) return
     queueRef.current.set(id, body)
     if (flushingRef.current) return
 
@@ -112,7 +126,18 @@ export function useServerSync(serverUrl: string, enabled: boolean, authToken?: s
       ])
       if (!serverRes.ok) { setStatus('offline'); return 'offline' }
 
-      const serverNotes = await serverRes.json() as { id: string; modifiedAt: string }[]
+      // Retry deletes that didn't reach the server earlier
+      const pending = loadPendingDeletes()
+      for (const id of [...pending]) {
+        try {
+          const r = await fetch(`${base}/api/notes/${encodeURIComponent(id)}`, { method: 'DELETE', headers })
+          if (r.ok || r.status === 404) pending.delete(id)
+        } catch {}
+      }
+      savePendingDeletes(pending)
+
+      const serverNotes = (await serverRes.json() as { id: string; modifiedAt: string }[])
+        .filter(n => !pending.has(n.id))
       const serverMap   = new Map(serverNotes.map(n => [n.id, n]))
       const localMap    = new Map(localNotes.map(n => [n.id, n]))
 
@@ -182,12 +207,21 @@ export function useServerSync(serverUrl: string, enabled: boolean, authToken?: s
         // If timestamps are equal — already in sync, nothing to do
       }
 
-      // 3. Handle notes that only exist locally — upload them
+      // 3. Handle notes that only exist locally — upload them, unless they
+      // were synced before and are untouched here, which means another device
+      // deleted or renamed them. (Skipped if the server is empty, so pointing
+      // at a fresh server never wipes local notes.)
       for (const ln of localNotes) {
         if (!serverMap.has(ln.id)) {
           tasks.push((async () => {
             const localNote = await window.api.notesRead(ln.filePath)
             if (!localNote) return
+            const syncBase = await window.api.syncGetBase(ln.id)
+            if (serverNotes.length > 0 && syncBase !== null && syncBase === localNote.body) {
+              await window.api.notesDelete(ln.filePath)
+              await window.api.syncClearBase(ln.id)
+              return
+            }
             await fetch(`${base}/api/notes/${encodeURIComponent(ln.id)}`, {
               method: 'PUT',
               headers: { 'Content-Type': 'application/json', ...headers },
@@ -248,12 +282,20 @@ export function useServerSync(serverUrl: string, enabled: boolean, authToken?: s
 
   const deleteNote = useCallback(async (id: string) => {
     if (!enabled || !serverUrl) return
+    queueRef.current.delete(id)
+    const pending = loadPendingDeletes()
+    pending.add(id)
+    savePendingDeletes(pending)
     try {
-      await fetch(`${base}/api/notes/${encodeURIComponent(id)}`, {
+      const r = await fetch(`${base}/api/notes/${encodeURIComponent(id)}`, {
         method: 'DELETE',
         headers: authToken ? { 'Authorization': `Bearer ${authToken}` } : {},
       })
-    } catch { /* offline — note is already gone locally, that's fine */ }
+      if (!r.ok && r.status !== 404) return
+    } catch { return /* offline — retried on the next sync */ }
+    const after = loadPendingDeletes()
+    after.delete(id)
+    savePendingDeletes(after)
   }, [enabled, serverUrl, authToken])
 
   /** Upload a locally-saved attachment to the server. Call after attachmentsSaveFile/attachmentsWrite. */

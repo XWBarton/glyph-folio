@@ -111,6 +111,9 @@ interface Props {
   bibEntries: BibEntry[]
   onNavigate: (title: string) => void
   noteId: string
+  /** Monaco model key; stays fixed when the note's file is renamed so the
+   *  editor keeps its cursor and undo history. Defaults to noteId. */
+  modelPath?: string
   onPickImage: () => Promise<string | null>
   onDropImage: (srcPath: string) => Promise<string | null>
   onPasteImage: (bytes: Uint8Array, ext: string) => Promise<string | null>
@@ -125,8 +128,9 @@ interface Props {
 export function NoteEditor({
   value, onChange, tokenColors, fontSize, spellCheckEnabled, onToggleSpellIgnore,
   customDictionary, onAddToDict, notes, bibEntries, onNavigate, noteId, onPickImage, onDropImage, onPasteImage, focusTitleKey,
-  onSelectionChange, diagnostics, jumpTo
+  onSelectionChange, diagnostics, jumpTo, modelPath
 }: Props) {
+  const editorPath = modelPath ?? noteId
   const [isDark, setIsDark] = useState(() => window.matchMedia('(prefers-color-scheme: dark)').matches)
 
   useEffect(() => {
@@ -210,6 +214,8 @@ export function NoteEditor({
   onNavigateRef.current = onNavigate
   const noteIdRef = useRef(noteId)
   noteIdRef.current = noteId
+  const editorPathRef = useRef(editorPath)
+  editorPathRef.current = editorPath
   const onPickImageRef = useRef(onPickImage)
   onPickImageRef.current = onPickImage
   const onDropImageRef = useRef(onDropImage)
@@ -673,7 +679,7 @@ export function NoteEditor({
 
   const handleMount: OnMount = useCallback((ed) => {
     editorRef.current = ed
-    const savedView = noteViewStates.get(noteIdRef.current)
+    const savedView = noteViewStates.get(editorPathRef.current)
     if (savedView) ed.restoreViewState(savedView)
     monaco.editor.setTheme('liquid-glass-light')
     ed.addCommand(monaco.KeyCode.F1, () => {})
@@ -1042,13 +1048,13 @@ export function NoteEditor({
   // before the editor swaps models), then restore the incoming note's.
   useEffect(() => {
     const ed = editorRef.current
-    const saved = noteViewStates.get(noteId)
+    const saved = noteViewStates.get(editorPath)
     if (ed && saved) ed.restoreViewState(saved)
     return () => {
       const state = editorRef.current?.saveViewState()
-      if (state) noteViewStates.set(noteId, state)
+      if (state) noteViewStates.set(editorPath, state)
     }
-  }, [noteId])
+  }, [editorPath])
 
   useEffect(() => {
     if (!focusTitleKey || focusTitleKey === handledFocusTitleKey) return
@@ -1186,7 +1192,7 @@ export function NoteEditor({
     <div ref={containerRef} style={{ flex: 1, overflow: 'hidden', minWidth: 0, position: 'relative' }}>
       <MonacoEditor
         height="100%"
-        path={noteId}
+        path={editorPath}
         language={TYPST_LANGUAGE_ID}
         value={value}
         theme={isDark ? 'glyph-dark' : 'glyph-light'}

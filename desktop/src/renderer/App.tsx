@@ -7,7 +7,7 @@ import { SearchModal } from './components/SearchModal'
 import { RemindersPanel } from './components/RemindersPanel'
 import { DictionaryModal } from './components/DictionaryModal'
 import { TabStrip } from './components/TabStrip'
-import { useNotes } from './hooks/useNotes'
+import { useNotes, editorModelPath, type NoteRename } from './hooks/useNotes'
 import { useNoteCompiler } from './hooks/useNoteCompiler'
 import { useTokenColors } from './hooks/useTokenColors'
 import { useServerSync } from './hooks/useServerSync'
@@ -24,6 +24,12 @@ const IS_SECONDARY = WINDOW_PARAMS.get('window') === 'secondary'
 const TABS_KEY = 'folio-open-tabs'
 const ACTIVE_TAB_KEY = 'folio-active-tab'
 
+/** Suggested export filename: the note's title, minus characters filesystems reject. */
+function exportBaseName(title: string, fallback: string): string {
+  const clean = title.replace(/[\\/:*?"<>|\u0000-\u001f]/g, '').replace(/\s+/g, ' ').trim()
+  return clean || fallback
+}
+
 function loadStoredTabs(): string[] {
   if (IS_SECONDARY) {
     const id = WINDOW_PARAMS.get('note')
@@ -34,10 +40,14 @@ function loadStoredTabs(): string[] {
 
 export default function App() {
   // ── State ────────────────────────────────────────────────────────────────────
+  // Set further down, once tabs and server sync exist
+  const onNoteRenamedRef = useRef<((rename: NoteRename) => void) | null>(null)
   const {
     notes, activeNote, isLoading, history, bibEntries,
     selectNote, closeNote, updateBody, createNote, importNote, deleteNote, refreshNotes, flushSave
-  } = useNotes()
+  } = useNotes({ onRenamed: rename => onNoteRenamedRef.current?.(rename) })
+  const activeNoteRef = useRef(activeNote)
+  activeNoteRef.current = activeNote
 
   const [settings, setSettings] = useState<AppSettings>({
     syncMode: 'local', serverUrl: '', notesDir: '', fontSize: 14,
@@ -132,7 +142,7 @@ export default function App() {
   }, [selectedText, body, countMode])
 
   // ── Server sync ───────────────────────────────────────────────────────────────
-  const { status: syncStatus, pushNote, syncAll, deleteNote: deleteNoteOnServer, uploadAttachment } = useServerSync(
+  const { status: syncStatus, pushNote, syncAll, deleteNote: deleteNoteOnServer, uploadAttachment, syncAttachments } = useServerSync(
     settings.serverUrl,
     settings.syncMode === 'server',
     settings.authToken
@@ -177,8 +187,11 @@ export default function App() {
     const t = setTimeout(() => {
       setIsDirty(false)
       setLastSaved(new Date())
-      if (activeNote && settings.syncMode === 'server') {
-        pushNote(activeNote.id, activeNote.body)
+      // Read through the ref: the note's id may have changed (file renamed
+      // to its title) since this timer was set
+      const current = activeNoteRef.current
+      if (current && settings.syncMode === 'server') {
+        pushNote(current.id, current.body)
       }
     }, 2100)
     return () => clearTimeout(t)
@@ -305,6 +318,27 @@ export default function App() {
     if (id) setOpenTabs(prev => (prev.includes(id) ? prev : [...prev, id]))
   }, [activeNote?.id])
 
+  // A note's file was renamed to follow its title: carry its tab, spell-check
+  // setting and server copy over to the new id
+  onNoteRenamedRef.current = ({ oldId, id, body: renamedBody }) => {
+    setOpenTabs(prev => prev.map(t => (t === oldId ? id : t)))
+    setSpellIgnoredNotes(prev => {
+      if (!prev.has(oldId)) return prev
+      const next = new Set(prev)
+      next.delete(oldId)
+      next.add(id)
+      try { localStorage.setItem('folio-spell-ignored', JSON.stringify([...next])) } catch {}
+      return next
+    })
+    if (settings.syncMode === 'server') {
+      void (async () => {
+        await deleteNoteOnServer(oldId)
+        await pushNote(id, renamedBody)
+        await syncAttachments([id])
+      })()
+    }
+  }
+
   // Drop tabs whose note was deleted (here, in another window, or by sync)
   useEffect(() => {
     if (isLoading) return
@@ -399,7 +433,7 @@ export default function App() {
     await flushSave()
     const result = await window.api.typstCompileNoteForExport(activeNote.body)
     if (!('pdfBytes' in result)) return
-    const name = `${activeNote.id}.pdf`
+    const name = `${exportBaseName(activeNote.title, activeNote.id)}.pdf`
     await window.api.notesExportPdf(Array.from(result.pdfBytes), name)
   }, [activeNote, flushSave])
 
@@ -407,7 +441,7 @@ export default function App() {
   const exportDocx = useCallback(async () => {
     if (!activeNote) return
     await flushSave()
-    const name = `${activeNote.id}.docx`
+    const name = `${exportBaseName(activeNote.title, activeNote.id)}.docx`
     await window.api.notesExportDocx(activeNote.filePath, name)
   }, [activeNote, flushSave])
 
@@ -565,6 +599,7 @@ export default function App() {
                 bibEntries={bibEntries}
                 onNavigate={handleNavigate}
                 noteId={activeNote.id}
+                modelPath={editorModelPath(activeNote.id)}
                 onPickImage={handlePickImage}
                 onDropImage={handleDropImage}
                 onPasteImage={handlePasteImage}

@@ -132,6 +132,18 @@ export function updateReminderForNote(noteId: string, body: string | null): void
   if (changed) onIndexChanged()
 }
 
+/** Carry a note's reminder (and its "already fired" record) over to a new id. */
+export function renameReminderNote(oldId: string, newId: string, body: string): void {
+  if (firedLog[oldId]) {
+    firedLog[newId] = firedLog[oldId]
+    delete firedLog[oldId]
+    saveFiredLog()
+  }
+  index.delete(oldId)
+  indexNote(newId, body)
+  onIndexChanged()
+}
+
 function onIndexChanged(): void {
   rescheduleNext()
   broadcast('reminders:changed')

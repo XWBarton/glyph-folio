@@ -73,6 +73,7 @@ export interface FolioAPI {
   menuPopup(): Promise<void>
   notesSearch(query: string): Promise<SearchResult[]>
   notesRenameLinks(oldTitle: string, newTitle: string, excludeFilePath: string): Promise<string[]>
+  notesRenameToTitle(filePath: string): Promise<{ oldId: string; id: string; filePath: string; body: string } | null>
   bibList(): Promise<string[]>
   typstCompileNote(body: string): Promise<{ pdfBytes: Uint8Array } | { error: string; diagnostics?: CompileDiagnostic[] }>
   typstCompileNoteForExport(body: string): Promise<{ pdfBytes: Uint8Array } | { error: string }>
@@ -104,6 +105,7 @@ export interface FolioAPI {
   windowClose(): Promise<void>
   syncGetBase(noteId: string): Promise<string | null>
   syncSetBase(noteId: string, body: string): Promise<void>
+  syncClearBase(noteId: string): Promise<void>
   spellListInstalled(): Promise<{ id: string; name: string; affPath: string; dicPath: string }[]>
   spellLoadDictFiles(affPath: string, dicPath: string, langName: string): Promise<{ aff: string; dic: string; name: string } | { error: string }>
   spellPickDict(): Promise<{ aff: string; dic: string; name: string; affPath: string; dicPath: string } | { error: string } | null>
@@ -128,6 +130,7 @@ const api: FolioAPI = {
   menuPopup: () => ipcRenderer.invoke('menu:popup'),
   notesSearch: (query) => ipcRenderer.invoke('notes:search', query),
   notesRenameLinks: (oldTitle, newTitle, excludeFilePath) => ipcRenderer.invoke('notes:rename-links', oldTitle, newTitle, excludeFilePath),
+  notesRenameToTitle: (filePath) => ipcRenderer.invoke('notes:rename-to-title', filePath),
   bibList: () => ipcRenderer.invoke('bib:list'),
   typstCompileNote: (body) => ipcRenderer.invoke('typst:compile-note', body),
   typstCompileNoteForExport: (body) => ipcRenderer.invoke('typst:compile-note-for-export', body),
@@ -185,6 +188,7 @@ const api: FolioAPI = {
   },
   syncGetBase: (noteId) => ipcRenderer.invoke('sync:get-base', noteId),
   syncSetBase: (noteId, body) => ipcRenderer.invoke('sync:set-base', noteId, body),
+  syncClearBase: (noteId) => ipcRenderer.invoke('sync:clear-base', noteId),
   spellListInstalled: () => ipcRenderer.invoke('spell:list-installed'),
   spellLoadDictFiles: (affPath, dicPath, langName) => ipcRenderer.invoke('spell:load-dict-files', affPath, dicPath, langName),
   spellPickDict: () => ipcRenderer.invoke('spell:pick-dict'),
